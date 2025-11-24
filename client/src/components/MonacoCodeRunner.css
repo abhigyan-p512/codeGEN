@@ -1,0 +1,92 @@
+.monaco-runner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(2, 6, 23, 0.9);
+  border: 1px solid rgba(31, 41, 55, 0.8);
+  border-radius: 18px;
+  padding: 16px;
+  color: #e5e7eb;
+}
+
+.monaco-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.language-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.language-select select {
+  background: #020617;
+  color: #e2e8f0;
+  border: 1px solid #1f2937;
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.monaco-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.monaco-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.monaco-btn.primary {
+  background: #22c55e;
+  color: #04121e;
+}
+
+.monaco-btn.accent {
+  background: #8b5cf6;
+  color: #fefefe;
+}
+
+.editor-wrapper {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.output-panel {
+  border-radius: 12px;
+  border: 1px solid rgba(31, 41, 55, 0.9);
+  background: #030712;
+  padding: 12px;
+}
+
+.output-panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  color: #cbd5f5;
+}
+
+.output-header {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+

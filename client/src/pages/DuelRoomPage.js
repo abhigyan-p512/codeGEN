@@ -1,1110 +1,451 @@
 // client/src/pages/DuelRoomPage.js
-import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import React, { useEffect, useState, useCallback } from "react";
+import { useParams } from "react-router-dom";
 import { createDuelSocket } from "../utils/duelSocket";
-import SimpleCodeEditor from "../components/SimpleCodeEditor";
+import MonacoCodeRunner from "../components/MonacoCodeRunner";
+import api from "../utils/api";
+import { useAuth } from "../context/AuthContext";
 
-function formatSeconds(sec) {
-  if (sec == null || Number.isNaN(sec)) return "00:00";
-  if (sec <= 0) return "00:00";
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  if (h > 0) {
-    return `${h.toString().padStart(2, "0")}:${m
-      .toString()
-      .padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  }
-  return `${m.toString().padStart(2, "0")}:${s
-    .toString()
-    .padStart(2, "0")}`;
-}
+const DEFAULT_LANGUAGE = "python";
 
-function difficultyBadgeMeta(difficulty) {
-  const d = (difficulty || "").toLowerCase();
-  if (d === "easy")
-    return {
-      text: "Easy",
-      bg: "rgba(22,163,74,0.18)",
-      border: "#16a34a",
-      color: "#4ade80",
-    };
-  if (d === "medium")
-    return {
-      text: "Medium",
-      bg: "rgba(245,158,11,0.18)",
-      border: "#f59e0b",
-      color: "#fbbf24",
-    };
-  if (d === "hard")
-    return {
-      text: "Hard",
-      bg: "rgba(239,68,68,0.18)",
-      border: "#ef4444",
-      color: "#f87171",
-    };
-  return null;
-}
+const styles = {
+  page: {
+    padding: "20px 40px",
+    color: "#f9fafb",
+    background: "#020617",
+    minHeight: "calc(100vh - 60px)",
+    boxSizing: "border-box",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "8px",
+    gap: "12px",
+  },
+  titleBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  title: {
+    fontSize: "28px",
+    fontWeight: 700,
+    margin: 0,
+  },
+  status: {
+    fontSize: "14px",
+    opacity: 0.85,
+  },
+  substatus: {
+    fontSize: "15px",
+    marginBottom: "14px",
+    opacity: 0.8,
+  },
+  main: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1.7fr)",
+    gap: "18px",
+    alignItems: "stretch",
+  },
+  problemPanel: {
+    background: "#020617",
+    borderRadius: "14px",
+    padding: "16px 18px",
+    border: "1px solid #1f2937",
+    boxShadow: "0 0 0 1px rgba(15, 23, 42, 0.6)",
+    maxHeight: "calc(100vh - 170px)",
+    overflowY: "auto",
+  },
+  problemTitle: {
+    fontSize: "20px",
+    marginBottom: "8px",
+  },
+  problemDescription: {
+    fontSize: "14px",
+    lineHeight: 1.5,
+    marginBottom: "12px",
+    whiteSpace: "pre-wrap",
+  },
+  problemSubheading: {
+    marginTop: "14px",
+    marginBottom: "6px",
+    fontSize: "15px",
+  },
+  problemConstraints: {
+    background: "#020617",
+    borderRadius: "8px",
+    border: "1px solid #111827",
+    padding: "8px 10px",
+    fontSize: "13px",
+    whiteSpace: "pre-wrap",
+  },
+  exampleBox: {
+    background: "#020617",
+    borderRadius: "10px",
+    padding: "10px 12px",
+    marginBottom: "10px",
+    border: "1px solid #111827",
+  },
+  exampleBlock: {
+    marginBottom: "6px",
+  },
+  examplePre: {
+    margin: "4px 0 0 0",
+    fontSize: "13px",
+    whiteSpace: "pre-wrap",
+  },
+  waitingProblemTitle: {
+    margin: "0 0 4px 0",
+  },
+  waitingProblemText: {
+    margin: 0,
+    fontSize: "14px",
+    opacity: 0.8,
+  },
+  editorPanel: {
+    background: "#020617",
+    borderRadius: "14px",
+    padding: "8px",
+    border: "1px solid #1f2937",
+    boxShadow: "0 0 0 1px rgba(15, 23, 42, 0.6)",
+    maxHeight: "calc(100vh - 170px)",
+    display: "flex",
+    flexDirection: "column",
+  },
+  editorPanelChild: {
+    flex: 1,
+    minHeight: 0,
+  },
 
-function problemText(problem) {
-  if (!problem) return "";
-  return (
-    problem.description ||
-    problem.statement ||
-    problem.body ||
-    problem.content ||
-    ""
-  );
-}
+  // Header actions (buttons)
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexShrink: 0,
+  },
+  duelCodeText: {
+    fontSize: "12px",
+    opacity: 0.75,
+  },
+  buttonBase: {
+    borderRadius: "9999px",
+    padding: "6px 14px",
+    fontSize: "13px",
+    fontWeight: 500,
+    border: "1px solid transparent",
+    cursor: "pointer",
+    outline: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    whiteSpace: "nowrap",
+    transition:
+      "background 0.15s ease, transform 0.05s ease, border-color 0.15s ease",
+  },
+  startButton: {
+    background:
+      "linear-gradient(90deg, rgba(129,140,248,1) 0%, rgba(236,72,153,1) 100%)",
+    borderColor: "rgba(129,140,248,0.4)",
+    color: "#0b1020",
+  },
+  startButtonDisabled: {
+    opacity: 0.6,
+    cursor: "default",
+  },
+  copyButton: {
+    background: "#020617",
+    borderColor: "#334155",
+    color: "#e5e7eb",
+  },
+};
 
-const defaultCode = `// Welcome to CodeGen4Future!
-// Start coding here...
-
-function helloWorld() {
-  console.log("Hello, World!");
-  return "Welcome to coding!";
-}
-
-// Run your code and see the output below
-helloWorld();`;
-
-function DuelRoomPage() {
+export default function DuelRoomPage() {
   const { roomId } = useParams();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { user, token: ctxToken } = useAuth();
-
-  // try multiple places for token
-  const token = ctxToken || user?.token || localStorage.getItem("token");
-
-  const isHost = location.state?.isHost ?? false;
-
+  const { user } = useAuth();
   const [socket, setSocket] = useState(null);
-  const [connecting, setConnecting] = useState(true);
-  const [connError, setConnError] = useState("");
-
-  const [players, setPlayers] = useState([]);
-  const [duelStarted, setDuelStarted] = useState(false);
-  const [duelEnded, setDuelEnded] = useState(false);
-  const [winnerSlot, setWinnerSlot] = useState(null);
-  const [endReason, setEndReason] = useState("");
-  const [submissions, setSubmissions] = useState([]);
-
-  const [timeLimit, setTimeLimit] = useState(null);
-  const [startAt, setStartAt] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(null);
-
   const [problem, setProblem] = useState(null);
-
-  const [code, setCode] = useState(defaultCode);
-  const [language, setLanguage] = useState("javascript");
-  const [stdin, setStdin] = useState("");
-  const [runStatus, setRunStatus] = useState("");
+  const [status, setStatus] = useState("Waiting to start");
+  const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
+  const [code, setCode] = useState("");
+  const [runOutput, setRunOutput] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [copyLabel, setCopyLabel] = useState("Copy duel code");
 
-  // redirect if not logged in
+  // ---------------------------- SOCKET SETUP ----------------------------
+  // 1) create socket once
   useEffect(() => {
-    if (!user || !token) {
-      navigate("/login", {
-        state: {
-          from: `/duel-room/${roomId}`,
-          message: "You must be logged in to join a duel",
-        },
-      });
-    }
-  }, [user, token, navigate, roomId]);
-
-  // init socket + room join / create
-  useEffect(() => {
-    if (!token) return;
-
-    const s = createDuelSocket(token);
+    const s = createDuelSocket(); // URL + token handled inside duelSocket.js :contentReference[oaicite:5]{index=5}
     setSocket(s);
-    setConnecting(true);
-    setConnError("");
 
-    s.on("connect", () => {
-      setConnecting(false);
-      setConnError("");
+    // server will send problem + meta on "duel_started" :contentReference[oaicite:6]{index=6}
+    s.on("duel_started", (payload) => {
+      if (payload?.problem) {
+        setProblem(payload.problem);
+      }
+      setStatus("Duel in progress");
+      setHasStarted(true);
+    });
 
-      if (isHost) {
-        s.emit(
-          "create_duel",
-          { roomId, timeLimit: 600 },
-          (resp) => {
-            if (!resp?.ok) {
-              setConnError(resp?.message || "Failed to create room");
-            }
-          }
-        );
+    s.on("duel_error", (err) => {
+      setStatus(err?.message || "Duel error");
+    });
+
+    s.on("duel_finished", (payload) => {
+      if (payload?.winner) {
+        setStatus("Duel finished – winner decided");
       } else {
-        s.emit("join_duel", { roomId }, (resp) => {
-          if (!resp?.ok) {
-            setConnError(resp?.message || "Failed to join room");
-          }
-        });
+        setStatus("Duel finished – draw");
       }
-    });
-
-    s.on("disconnect", () => {
-      setConnError("Disconnected from server");
-    });
-
-    s.on("duel_error", (payload) => {
-      setConnError(payload?.message || "Duel error");
-    });
-
-    s.on("room_update", ({ players: p, started }) => {
-      setPlayers(p || []);
-      setDuelStarted(!!started);
-    });
-
-    s.on("duel_started", ({ problem, startedAt, timeLimit }) => {
-      setProblem(problem || null);
-      setStartAt(startedAt || Date.now());
-      setTimeLimit(timeLimit || 600);
-      setDuelStarted(true);
-      setDuelEnded(false);
-      setWinnerSlot(null);
-      setEndReason("");
-      setSubmissions([]);
-      setRunStatus("");
-    });
-
-    s.on("duel_submission_update", ({ attempt }) => {
-      if (!attempt) return;
-      setSubmissions((prev) => [...prev, attempt]);
-    });
-
-    s.on("duel_ended", ({ winner, reason, summary }) => {
-      setDuelEnded(true);
-      setWinnerSlot(winner || null);
-      setEndReason(reason || "");
-      if (summary?.submissions) {
-        setSubmissions(summary.submissions);
-      }
-      setTimeLeft(0);
     });
 
     return () => {
-      s.emit("leave_duel", { roomId });
-      s.removeAllListeners();
       s.disconnect();
     };
-  }, [token, roomId, isHost]);
+  }, []);
 
-  // countdown timer
+  // 2) join the duel room once we know socket + user + roomId
   useEffect(() => {
-    if (!duelStarted || duelEnded || !startAt || !timeLimit) return;
-
-    const tick = () => {
-      const now = Date.now();
-      const elapsed = Math.floor((now - startAt) / 1000);
-      const remaining = Math.max(timeLimit - elapsed, 0);
-      setTimeLeft(remaining);
-    };
-
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [duelStarted, duelEnded, startAt, timeLimit]);
-
-  const myId = user?._id || user?.id;
-  const me = useMemo(
-    () => players.find((p) => p.id === myId),
-    [players, myId]
-  );
-  const opponent = useMemo(
-    () => players.find((p) => p.id !== myId),
-    [players, myId]
-  );
-
-  const statusText = useMemo(() => {
-    if (connError) return "Error";
-    if (connecting) return "Connecting…";
-    if (!duelStarted) return "Waiting for players / host to start";
-    if (duelEnded) return "Duel finished";
-    return "Duel in progress";
-  }, [connError, connecting, duelStarted, duelEnded]);
-
-  const badge = difficultyBadgeMeta(problem?.difficulty);
-  const pText = problemText(problem);
-  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(pText || "");
-  const examples = problem?.examples || [];
-  const hasIO =
-    problem?.inputFormat || problem?.outputFormat || problem?.constraints;
-
-  const handleStart = () => {
     if (!socket) return;
-    socket.emit("start_duel", { roomId }, (resp) => {
-      if (!resp?.ok) {
-        setConnError(resp?.message || "Failed to start duel");
-      }
-    });
-  };
+    if (!roomId || !user?._id) return;
 
-  const handleUseExampleInput = (input) => {
-    if (!input) return;
-    setStdin(input);
-    const el = document.getElementById("duel-editor-section");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+    socket.emit("join_duel", { roomId, userId: user._id }); // :contentReference[oaicite:7]{index=7}
+  }, [socket, roomId, user]);
 
-  const handleSubmit = () => {
-    if (!socket || !duelStarted || duelEnded) return;
+  // ---------------------------- ACTIONS ----------------------------
+  // Run against example input via /judge/run (like ProblemPage) :contentReference[oaicite:8]{index=8}
+  const handleRun = useCallback(async () => {
+    if (!problem) {
+      setRunOutput("Problem not loaded yet.");
+      return;
+    }
+    try {
+      setIsRunning(true);
+      setRunOutput("Running...");
+
+      const sampleInput = problem.exampleTests?.[0]?.input || "";
+
+      const res = await api.post("/judge/run", {
+        code,
+        language,
+        input: sampleInput,
+      });
+
+      const out =
+        res.data.output ||
+        res.data.stdout ||
+        "No output received from runner.";
+      setRunOutput(out);
+    } catch (err) {
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        "Error executing code.";
+      setRunOutput(msg);
+    } finally {
+      setIsRunning(false);
+    }
+  }, [problem, code, language]);
+
+  // Submit to duel via socket
+  const handleSubmit = useCallback(() => {
+    if (!socket) {
+      setRunOutput("Socket not connected.");
+      return;
+    }
+    if (!user) {
+      setRunOutput("You must be logged in to submit.");
+      return;
+    }
+    if (!problem) {
+      setRunOutput("Problem not loaded yet.");
+      return;
+    }
+
     setIsSubmitting(true);
-    setRunStatus("");
+    setRunOutput("Submitting to duel...");
 
     socket.emit(
       "duel_submit_code",
-      { roomId, source: code, language, stdin },
-      (resp) => {
+      {
+        roomId,
+        userId: user._id,
+        code,
+        languageId: language, // server expects "python" | "javascript" | "cpp" strings :contentReference[oaicite:9]{index=9}
+      },
+      (res) => {
         setIsSubmitting(false);
-        if (!resp?.ok) {
-          setRunStatus(resp?.message || "Submission failed");
+
+        if (!res || !res.ok) {
+          setRunOutput(res?.message || "Submit failed.");
           return;
         }
-        const accepted = resp.accepted;
-        const statusDesc =
-          resp.judge?.status?.description ||
-          resp.judge?.result ||
-          (accepted ? "Accepted" : "Not accepted");
-        setRunStatus(
-          accepted
-            ? `✅ Accepted – ${statusDesc}`
-            : `⚠️ Not accepted – ${statusDesc}`
-        );
+
+        const judge = res.judge || {};
+        const statusText =
+          judge.status?.description ||
+          (res.accepted ? "Accepted" : "Some tests failed");
+
+        if (res.accepted) {
+          setRunOutput(
+            `Accepted! ✅\n\n${judge.stdout || ""}`.trim() || "Accepted! ✅"
+          );
+        } else {
+          setRunOutput(
+            `Some tests failed. ❌\n\nStatus: ${statusText}\n\n${
+              judge.stderr || judge.stdout || ""
+            }`
+          );
+        }
       }
     );
-  };
+  }, [socket, roomId, user, code, language, problem]);
+
+  const handleStartDuel = useCallback(() => {
+    if (!socket || hasStarted) return;
+
+    setStatus("Starting duel...");
+    setHasStarted(true);
+
+    socket.emit("start_duel", { roomId }, (res) => {
+      if (!res || !res.ok) {
+        setHasStarted(false);
+        setStatus(res?.message || "Failed to start duel");
+      }
+      // on success, server will emit "duel_started" which sets problem + status
+    });
+  }, [socket, roomId, hasStarted]);
+
+  const handleCopyCode = useCallback(async () => {
+    if (!roomId) return;
+    try {
+      await navigator.clipboard.writeText(roomId);
+      setCopyLabel("Copied!");
+    } catch {
+      setCopyLabel("Failed to copy");
+    }
+    setTimeout(() => setCopyLabel("Copy duel code"), 1500);
+  }, [roomId]);
+
+  const startDisabled = !socket || hasStarted;
 
   return (
-    <div className="page-container">
-      <div
-        className="page-card"
-        style={{
-          borderRadius: 28,
-          padding: 26,
-          border: "1px solid #111827",
-          background:
-            "radial-gradient(circle at top, rgba(168,85,247,0.16), transparent 60%), #050509",
-          boxShadow: "0 28px 90px rgba(0,0,0,0.95)",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            marginBottom: 18,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          <h1 className="page-heading" style={{ marginBottom: 0 }}>
-            1v1 Duel Room
-          </h1>
-          <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            Room ID: <strong>{roomId}</strong> — share this with your opponent.
-            First to solve wins, or server decides when the timer expires.
-          </p>
+    <div style={styles.page}>
+      <header style={styles.header}>
+        <div style={styles.titleBlock}>
+          <h1 style={styles.title}>1v1 Duel Room</h1>
+          <div style={styles.status}>{status}</div>
         </div>
 
-        {/* Error banner */}
-        {connError && (
-          <div
-            style={{
-              marginBottom: 14,
-              padding: 10,
-              borderRadius: 12,
-              background: "rgba(127,29,29,0.9)",
-              border: "1px solid rgba(248,113,113,0.7)",
-              fontSize: 13,
-              color: "#fee2e2",
-            }}
-          >
-            {connError}
-          </div>
-        )}
+        <div style={styles.headerActions}>
+          {roomId && (
+            <div style={styles.duelCodeText}>Room code: {roomId}</div>
+          )}
 
-        {/* Scoreboard row */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 18,
-            marginBottom: 22,
-          }}
-        >
-          {/* You */}
-          <div
+          <button
+            type="button"
             style={{
-              padding: 18,
-              borderRadius: 22,
-              border: "1px solid rgba(34,197,94,0.7)",
-              background:
-                "radial-gradient(circle at top, rgba(22,163,74,0.25), transparent 60%), #020617",
-              boxShadow: "0 18px 45px rgba(0,0,0,0.9)",
+              ...styles.buttonBase,
+              ...styles.copyButton,
             }}
+            onClick={handleCopyCode}
           >
-            <h3
-              style={{
-                fontSize: 16,
-                fontWeight: 600,
-                marginBottom: 4,
-                color: "#bbf7d0",
-              }}
-            >
-              You
-            </h3>
-            <p style={{ margin: 0, fontSize: 13, color: "#a7f3d0" }}>
-              {me ? me.username || me.name : "Waiting..."}
-            </p>
-            <p
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                margin: "8px 0 6px",
-              }}
-            >
-              {me?.rating ?? "—"}
-            </p>
-            <p
-              style={{
-                fontSize: 11,
-                color: "#bbf7d0",
-                opacity: 0.8,
-              }}
-            >
-              Rating
-            </p>
-          </div>
+            {copyLabel}
+          </button>
 
-          {/* Timer */}
-          <div
+          <button
+            type="button"
             style={{
-              padding: 18,
-              borderRadius: 22,
-              border: "1px solid rgba(59,130,246,0.7)",
-              background:
-                "radial-gradient(circle at top, rgba(59,130,246,0.25), transparent 60%), #020617",
-              textAlign: "center",
-              boxShadow: "0 18px 45px rgba(0,0,0,0.9)",
+              ...styles.buttonBase,
+              ...styles.startButton,
+              ...(startDisabled ? styles.startButtonDisabled : {}),
             }}
+            onClick={handleStartDuel}
+            disabled={startDisabled}
           >
-            <div
-              style={{
-                fontSize: 13,
-                color: "#cbd5f5",
-                marginBottom: 4,
-              }}
-            >
-              {statusText}
-            </div>
-            <div
-              style={{
-                fontSize: 32,
-                fontWeight: 700,
-                letterSpacing: 2,
-                marginBottom: 10,
-              }}
-            >
-              {formatSeconds(timeLeft)}
-            </div>
-            {isHost && !duelStarted && !duelEnded && (
-              <button
-                className="btn btn-primary"
-                onClick={handleStart}
-                disabled={connecting || !!connError || players.length < 2}
-              >
-                {players.length < 2 ? "Waiting for opponent…" : "Start Duel"}
-              </button>
-            )}
-            {!isHost && !duelStarted && !duelEnded && (
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "#cbd5f5",
-                  marginTop: 4,
-                }}
-              >
-                Waiting for host to start…
-              </p>
-            )}
-          </div>
-
-          {/* Opponent */}
-          <div
-            style={{
-              padding: 18,
-              borderRadius: 22,
-              border: "1px solid rgba(248,250,252,0.12)",
-              background:
-                "radial-gradient(circle at top, rgba(248,250,252,0.1), transparent 60%), #020617",
-              boxShadow: "0 18px 45px rgba(0,0,0,0.9)",
-            }}
-          >
-            <h3
-              style={{
-                fontSize: 16,
-                fontWeight: 600,
-                marginBottom: 4,
-                color: "#e5e7eb",
-              }}
-            >
-              Opponent
-            </h3>
-            <p style={{ margin: 0, fontSize: 13, color: "#e5e7eb" }}>
-              {opponent ? opponent.username || opponent.name : "Waiting..."}
-            </p>
-            <p
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                margin: "8px 0 6px",
-              }}
-            >
-              {opponent?.rating ?? "—"}
-            </p>
-            <p
-              style={{
-                fontSize: 11,
-                color: "#9ca3af",
-                opacity: 0.85,
-              }}
-            >
-              Rating
-            </p>
-          </div>
+            {hasStarted ? "Duel started" : "Start Duel"}
+          </button>
         </div>
+      </header>
 
-        {/* Result banner */}
-        {duelEnded && (
-          <div
-            style={{
-              marginBottom: 18,
-              padding: 10,
-              borderRadius: 12,
-              background: "rgba(15,23,42,0.9)",
-              border: "1px solid rgba(148,163,184,0.5)",
-              fontSize: "0.9rem",
-            }}
-          >
-            {winnerSlot === null || winnerSlot === "draw"
-              ? "Duel finished: draw."
-              : winnerSlot === (me?.slot || "")
-              ? "Duel finished: You won! 🎉"
-              : "Duel finished: Opponent won."}
-            {endReason && (
-              <span style={{ opacity: 0.85 }}>
-                {" "}
-                (Reason: <code>{endReason}</code>)
-              </span>
-            )}
-          </div>
-        )}
+      <div style={styles.substatus}>
+        {problem ? "Problem loaded" : "Waiting for problem..."}
+      </div>
 
-        {/* Submission activity */}
-        {submissions.length > 0 && (
-          <div
-            style={{
-              marginBottom: 18,
-              padding: 10,
-              borderRadius: 12,
-              background: "rgba(15,23,42,0.88)",
-              border: "1px solid rgba(55,65,81,0.8)",
-              maxHeight: 140,
-              overflowY: "auto",
-              fontSize: 12,
-            }}
-          >
-            <div
-              style={{
-                marginBottom: 6,
-                fontWeight: 600,
-                fontSize: 13,
-                color: "#e5e7eb",
-              }}
-            >
-              Submission activity
-            </div>
-            {submissions.map((a, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  padding: "2px 0",
-                }}
-              >
-                <span>
-                  <strong>{a.user?.name || "Player"}</strong>{" "}
-                  {a.accepted ? (
-                    <span style={{ color: "#4ade80" }}>Accepted</span>
-                  ) : (
-                    <span style={{ color: "#fbbf24" }}>Not accepted</span>
-                  )}
-                </span>
-                <span style={{ opacity: 0.8 }}>
-                  {typeof a.passedTests === "number" &&
-                  typeof a.totalTests === "number"
-                    ? `${a.passedTests}/${a.totalTests} tests`
-                    : null}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+      <div style={styles.main}>
+        {/* -------- LEFT: Problem Statement -------- */}
+        <section style={styles.problemPanel}>
+          {problem ? (
+            <>
+              <h2 style={styles.problemTitle}>{problem.title}</h2>
+              <p style={styles.problemDescription}>{problem.description}</p>
 
-        {/* MAIN 2-COLUMN AREA: Problem (left) + Editor (right) */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1fr)",
-            gap: 22,
-            alignItems: "flex-start",
-          }}
-        >
-          {/* LEFT: Battle Problem -> looks like normal problem page */}
-          <div>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 600,
-                marginBottom: 8,
-              }}
-            >
-              Battle Problem
-            </h2>
-
-            <div
-              style={{
-                padding: 18,
-                borderRadius: 20,
-                background: "rgba(15,23,42,0.98)",
-                border: "1px solid #111827",
-                minHeight: 220,
-                maxHeight: 640,
-                overflowY: "auto",
-              }}
-            >
-              {!duelStarted && !problem && (
-                <p style={{ fontSize: 13, color: "#9ca3af" }}>
-                  Problem will appear here once the duel starts.
-                </p>
+              {problem?.constraints && (
+                <>
+                  <h3 style={styles.problemSubheading}>Constraints</h3>
+                  <pre style={styles.problemConstraints}>
+                    {problem.constraints}
+                  </pre>
+                </>
               )}
 
-              {problem && (
+              {problem?.exampleTests?.length > 0 && (
                 <>
-                  {/* Title + difficulty */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      marginBottom: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <h2
-                      style={{
-                        fontSize: 22,
-                        fontWeight: 700,
-                        margin: 0,
-                        color: "#e5e7eb",
-                      }}
-                    >
-                      {problem.title || "Untitled problem"}
-                    </h2>
-                    {badge && (
-                      <span
-                        style={{
-                          padding: "3px 12px",
-                          borderRadius: 999,
-                          background: badge.bg,
-                          border: `1px solid ${badge.border}`,
-                          color: badge.color,
-                          fontSize: 11,
-                          textTransform: "uppercase",
-                          letterSpacing: 0.08,
-                        }}
-                      >
-                        {badge.text}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Description */}
-                  <div style={{ marginBottom: 16 }}>
-                    <h3
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        marginBottom: 4,
-                        color: "#e5e7eb",
-                      }}
-                    >
-                      Description
-                    </h3>
-                    {pText ? (
-                      looksLikeHtml ? (
-                        <div
-                          style={{
-                            fontSize: 13,
-                            color: "#e5e7eb",
-                            lineHeight: 1.6,
-                          }}
-                          dangerouslySetInnerHTML={{ __html: pText }}
-                        />
-                      ) : (
-                        <p
-                          style={{
-                            fontSize: 13,
-                            color: "#e5e7eb",
-                            lineHeight: 1.6,
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          {pText}
-                        </p>
-                      )
-                    ) : (
-                      <p
-                        style={{
-                          fontSize: 13,
-                          color: "#9ca3af",
-                        }}
-                      >
-                        No description available.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Input / Output / Constraints */}
-                  {hasIO && (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fit, minmax(170px, 1fr))",
-                        gap: 16,
-                        marginBottom: 16,
-                      }}
-                    >
-                      {problem.inputFormat && (
-                        <div>
-                          <h4
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 600,
-                              marginBottom: 4,
-                              color: "#e5e7eb",
-                            }}
-                          >
-                            Input Format
-                          </h4>
-                          <p
-                            style={{
-                              fontSize: 13,
-                              color: "#d1d5db",
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {problem.inputFormat}
-                          </p>
-                        </div>
-                      )}
-                      {problem.outputFormat && (
-                        <div>
-                          <h4
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 600,
-                              marginBottom: 4,
-                              color: "#e5e7eb",
-                            }}
-                          >
-                            Output Format
-                          </h4>
-                          <p
-                            style={{
-                              fontSize: 13,
-                              color: "#d1d5db",
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {problem.outputFormat}
-                          </p>
-                        </div>
-                      )}
-                      {problem.constraints && (
-                        <div>
-                          <h4
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 600,
-                              marginBottom: 4,
-                              color: "#e5e7eb",
-                            }}
-                          >
-                            Constraints
-                          </h4>
-                          <pre
-                            style={{
-                              margin: 0,
-                              padding: 10,
-                              borderRadius: 10,
-                              fontSize: 12,
-                              background: "#020617",
-                              border: "1px solid rgba(31,41,55,0.9)",
-                              color: "#e5e7eb",
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {problem.constraints}
+                  <h3 style={styles.problemSubheading}>Examples</h3>
+                  {problem.exampleTests.map((ex, idx) => (
+                    <div key={idx} style={styles.exampleBox}>
+                      <div style={styles.exampleBlock}>
+                        <strong>Input:</strong>
+                        <pre style={styles.examplePre}>{ex.input}</pre>
+                      </div>
+                      <div style={styles.exampleBlock}>
+                        <strong>Output:</strong>
+                        <pre style={styles.examplePre}>{ex.output}</pre>
+                      </div>
+                      {ex.explanation && (
+                        <div style={styles.exampleBlock}>
+                          <strong>Explanation:</strong>
+                          <pre style={styles.examplePre}>
+                            {ex.explanation}
                           </pre>
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Examples with Use as Input */}
-                  {examples.length > 0 && (
-                    <div style={{ marginTop: 4 }}>
-                      <h3
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 600,
-                          marginBottom: 8,
-                          color: "#e5e7eb",
-                        }}
-                      >
-                        Examples
-                      </h3>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 12,
-                        }}
-                      >
-                        {examples.map((ex, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              padding: 12,
-                              borderRadius: 14,
-                              background: "#020617",
-                              border: "1px solid rgba(31,41,55,0.95)",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                marginBottom: 6,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 600,
-                                  color: "#e5e7eb",
-                                }}
-                              >
-                                Example {idx + 1}
-                              </span>
-                              <button
-                                type="button"
-                                className="btn btn-secondary"
-                                style={{
-                                  padding: "4px 10px",
-                                  fontSize: 11,
-                                  borderRadius: 999,
-                                }}
-                                onClick={() =>
-                                  handleUseExampleInput(ex.input)
-                                }
-                              >
-                                Use as Input
-                              </button>
-                            </div>
-
-                            {ex.input && (
-                              <div style={{ marginBottom: 6 }}>
-                                <span
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    color: "#a5b4fc",
-                                  }}
-                                >
-                                  Input:
-                                </span>
-                                <pre
-                                  style={{
-                                    margin: 0,
-                                    marginTop: 2,
-                                    padding: 8,
-                                    borderRadius: 8,
-                                    fontSize: 12,
-                                    background: "#020617",
-                                    border:
-                                      "1px solid rgba(30,64,175,0.7)",
-                                    color: "#e5e7eb",
-                                    whiteSpace: "pre-wrap",
-                                  }}
-                                >
-                                  {ex.input}
-                                </pre>
-                              </div>
-                            )}
-
-                            {ex.output && (
-                              <div style={{ marginBottom: 6 }}>
-                                <span
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    color: "#6ee7b7",
-                                  }}
-                                >
-                                  Output:
-                                </span>
-                                <pre
-                                  style={{
-                                    margin: 0,
-                                    marginTop: 2,
-                                    padding: 8,
-                                    borderRadius: 8,
-                                    fontSize: 12,
-                                    background: "#020617",
-                                    border:
-                                      "1px solid rgba(22,163,74,0.7)",
-                                    color: "#e5e7eb",
-                                    whiteSpace: "pre-wrap",
-                                  }}
-                                >
-                                  {ex.output}
-                                </pre>
-                              </div>
-                            )}
-
-                            {ex.explanation && (
-                              <div>
-                                <span
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    color: "#facc15",
-                                  }}
-                                >
-                                  Explanation:
-                                </span>
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    marginTop: 2,
-                                    fontSize: 12,
-                                    color: "#e5e7eb",
-                                  }}
-                                >
-                                  {ex.explanation}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  ))}
                 </>
               )}
+            </>
+          ) : (
+            <div>
+              <h3 style={styles.waitingProblemTitle}>Waiting for problem…</h3>
+              <p style={styles.waitingProblemText}>
+                The duel will start as soon as a problem is selected.
+              </p>
             </div>
+          )}
+        </section>
+
+        {/* -------- RIGHT: Monaco Code Runner -------- */}
+        <section style={styles.editorPanel}>
+          <div style={styles.editorPanelChild}>
+            <MonacoCodeRunner
+              value={code}
+              onChange={setCode}
+              language={language}
+              onLanguageChange={setLanguage}
+              onRun={handleRun}
+              onSubmit={handleSubmit}
+              runOutput={runOutput}
+              allowSubmit={true}
+              isRunning={isRunning}
+              isSubmitting={isSubmitting}
+            />
           </div>
-
-          {/* RIGHT: Your Code (re-using your SimpleCodeEditor layout) */}
-          <div id="duel-editor-section">
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 600,
-                marginBottom: 8,
-              }}
-            >
-              Your Code
-            </h2>
-
-            <p
-              style={{
-                fontSize: 12,
-                color: "#9ca3af",
-                marginBottom: 10,
-              }}
-            >
-              💡 Use the examples on the left and the custom input below to test
-              your solution, then submit to the duel. First accepted solution
-              wins.
-            </p>
-
-            <div
-              style={{
-                padding: 16,
-                borderRadius: 20,
-                background: "rgba(15,23,42,0.98)",
-                border: "1px solid #111827",
-              }}
-            >
-              {/* Top row: buttons + language */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  alignItems: "center",
-                  marginBottom: 12,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => {}} // regular "Run Code" handled by SimpleCodeEditor if you wired it
-                    style={{ padding: "6px 16px", fontWeight: 600 }}
-                  >
-                    Run Code
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setCode(defaultCode)}
-                    style={{ padding: "6px 14px", fontSize: 12 }}
-                  >
-                    Clear
-                  </button>
-                  {/* Copy & Download buttons are visual; you can wire them to your utilities */}
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: "6px 14px", fontSize: 12 }}
-                    onClick={() => navigator.clipboard.writeText(code)}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: "6px 14px", fontSize: 12 }}
-                    onClick={() => {
-                      const blob = new Blob([code], {
-                        type: "text/plain;charset=utf-8",
-                      });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = "solution.txt";
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                  >
-                    Download
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 13,
-                      color: "#e5e7eb",
-                      fontWeight: 500,
-                    }}
-                  >
-                    Language:
-                  </span>
-                  <select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="input-control"
-                    style={{
-                      maxWidth: 160,
-                      fontSize: 13,
-                      paddingTop: 6,
-                      paddingBottom: 6,
-                    }}
-                  >
-                    <option value="cpp">C++</option>
-                    <option value="c">C</option>
-                    <option value="java">Java</option>
-                    <option value="python">Python</option>
-                    <option value="javascript">JavaScript</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Code editor + output (your SimpleCodeEditor handles layout) */}
-              <div style={{ marginBottom: 12 }}>
-                <SimpleCodeEditor
-                  value={code}
-                  onChange={setCode}
-                  language={language}
-                />
-              </div>
-
-              {/* stdin box */}
-              <textarea
-                className="input-control"
-                rows={3}
-                placeholder="Optional custom input (stdin)"
-                value={stdin}
-                onChange={(e) => setStdin(e.target.value)}
-                style={{ marginBottom: 10, fontSize: 13 }}
-              />
-
-              {/* Duel submission */}
-              <button
-                className="btn btn-primary"
-                onClick={handleSubmit}
-                disabled={
-                  isSubmitting ||
-                  !duelStarted ||
-                  duelEnded ||
-                  !!connError ||
-                  connecting
-                }
-                style={{ padding: "9px 18px", fontWeight: 600 }}
-              >
-                {isSubmitting ? "Running & Submitting…" : "Run & Submit to Duel"}
-              </button>
-
-              {runStatus && (
-                <p
-                  style={{
-                    fontSize: 13,
-                    marginTop: 8,
-                    color: runStatus.startsWith("✅")
-                      ? "#4ade80"
-                      : "#e5e7eb",
-                  }}
-                >
-                  {runStatus}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        </section>
       </div>
     </div>
   );
 }
-
-export default DuelRoomPage;

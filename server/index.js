@@ -60,17 +60,56 @@ app.get("/", (req, res) => {
 });
 
 // ---------- Mongo + server startup ----------
-mongoose
-  .connect(process.env.MONGO_URI || "mongodb://localhost:27017/leetclone", {
-    // current driver does not require these options; kept for compatibility logs
-  })
-  .then(() => {
-    console.log("MongoDB connected");
+const preferredMongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/leetclone";
 
-    // create HTTP server and attach socket.io
-    const http = require("http");
-    const server = http.createServer(app);
+async function startServer() {
+  const http = require("http");
+  const server = http.createServer(app);
 
+  // flexible connect with fallback and retries
+  async function connectWithRetry(uri, retries = 2, delayMs = 2000) {
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+      try {
+        console.log(`Attempting MongoDB connect (attempt ${attempt}) -> ${uri.includes("mongodb.net") ? "(Atlas SRV)" : uri}`);
+        await mongoose.connect(uri, {
+          // leave options empty for modern driver, adjust if you need
+        });
+        console.log("MongoDB connected");
+        return;
+      } catch (err) {
+        console.error(`Mongo connection attempt ${attempt} failed:`, err.message);
+        if (attempt <= retries) {
+          console.log(`Retrying in ${delayMs} ms...`);
+          await new Promise((r) => setTimeout(r, delayMs));
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
+  try {
+    // Try preferred URI (likely Atlas). If it fails with DNS/SRV issues, try local fallback.
+    try {
+      await connectWithRetry(preferredMongoUri, 2, 2000);
+    } catch (firstErr) {
+      console.warn("Primary MongoDB URI failed.");
+      // If the primary looks like an Atlas SRV and error is DNS-related, try local fallback
+      const looksLikeAtlas = /mongodb\+srv|mongodb\.net/i.test(preferredMongoUri);
+      if (looksLikeAtlas) {
+        console.warn("Detected Atlas SRV URI. Attempting fallback to local MongoDB (mongodb://localhost:27017/leetclone).");
+        try {
+          await connectWithRetry("mongodb://localhost:27017/leetclone", 1, 1000);
+        } catch (fallbackErr) {
+          console.error("Fallback to local MongoDB failed:", fallbackErr.message);
+          throw firstErr; // show original failure
+        }
+      } else {
+        throw firstErr;
+      }
+    }
+
+    // init socket.io if available
     let io = null;
     try {
       const { Server } = require("socket.io");
@@ -82,33 +121,26 @@ mongoose
         },
       });
 
-      // initSockets is expected in server/socket.js
-      try {
-        const { initSockets } = require("./socket");
-        if (typeof initSockets === "function") {
-          initSockets(io);
-          console.log("Socket handlers initialized");
-        } else {
-          console.warn("initSockets not found in ./socket");
-        }
-      } catch (err) {
-        console.warn("Could not initialize socket handlers:", err.message);
-        if (err.stack) console.warn(err.stack.split("\n").slice(0, 6).join("\n"));
+      // 👇 CHANGED HERE
+      const initSockets = require("./socket");
+      if (typeof initSockets === "function") {
+        initSockets(io);
+        console.log("Socket handlers initialized");
       }
     } catch (err) {
-      console.warn(
-        "socket.io not installed. Real-time features (duel rooms) will be disabled.\n" +
-          "Install it with: (in server folder) npm install socket.io\n" +
-          "Error: " + err.message
-      );
+      console.warn("socket.io not available; real-time disabled.");
     }
 
     server.listen(PORT, () => {
       console.log(`Server ${io ? "+ socket.io " : ""}started on port ${PORT}`);
     });
-  })
-  .catch((err) => {
-    console.error("Mongo connection error:", err);
-  });
+  } catch (err) {
+    console.error("Failed to start server due to MongoDB connection error:");
+    console.error(err);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 

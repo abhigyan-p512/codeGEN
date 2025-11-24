@@ -16,9 +16,16 @@ function getSocketUrl() {
 
 const SOCKET_URL = getSocketUrl();
 
-export function createDuelSocket(token) {
+// Named export – if you ever want to call it manually
+export function createDuelSocket() {
+  // Read JWT from localStorage (same one you use for API calls)
+  const token = localStorage.getItem("token");
+
   return io(SOCKET_URL, {
     transports: ["websocket"],
-    auth: { token }, // JWT from localStorage / AuthContext
+    auth: { token },
   });
 }
+
+// Default export – what DuelRoomPage and Duel.js import as `duelSocket`
+export default createDuelSocket;

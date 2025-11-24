@@ -15,6 +15,8 @@ function mapLanguage(language) {
       return 71; // Python 3.8.1
     case "java":
       return 62; // Java (OpenJDK 13)
+    case "c":
+      return 50; // C (GCC 9.2.0)
     case "javascript":
     default:
       return 63; // Node.js

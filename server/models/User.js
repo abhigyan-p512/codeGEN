@@ -16,9 +16,10 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-    password: {
+    passwordHash: {
       type: String,
       required: true,
+      select: false,
     },
 
     // Editable profile fields

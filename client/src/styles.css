@@ -3731,6 +3731,111 @@ textarea:focus {
   font-size: 14px;
   margin-top: 6px;
 }
+.problem-container {
+  color: white;
+  margin-bottom: 20px;
+}
+
+.problem-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.difficulty-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.difficulty-badge.Easy {
+  background-color: #1da064;
+}
+
+.difficulty-badge.Medium {
+  background-color: #c7920b;
+}
+
+.difficulty-badge.Hard {
+  background-color: #d32f2f;
+}
+
+.examples-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.example-card {
+  background-color: #0a1a2f;
+  padding: 15px;
+  border-radius: 10px;
+}
+
+.use-input-button {
+  margin-top: 10px;
+  background: #4f46e5;
+  padding: 6px 14px;
+  color: white;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+.problem-container {
+  color: white;
+  margin-bottom: 20px;
+}
+
+.problem-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.difficulty-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.difficulty-badge.Easy {
+  background-color: #1da064;
+}
+
+.difficulty-badge.Medium {
+  background-color: #c7920b;
+}
+
+.difficulty-badge.Hard {
+  background-color: #d32f2f;
+}
+
+.examples-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.example-card {
+  background-color: #0a1a2f;
+  padding: 15px;
+  border-radius: 10px;
+}
+
+.use-input-button {
+  margin-top: 10px;
+  background: #4f46e5;
+  padding: 6px 14px;
+  color: white;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
 
 
 

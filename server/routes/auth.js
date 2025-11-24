@@ -34,7 +34,21 @@ router.post("/register", async (req, res) => {
       passwordHash,
     });
 
-    res.status(201).json({ message: "User registered", userId: user._id });
+    const token = jwt.sign(
+      { userId: user._id, username: user.username },
+      process.env.JWT_SECRET || "secret",
+      { expiresIn: "7d" }
+    );
+
+    res.status(201).json({
+      message: "User registered",
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+      },
+    });
   } catch (err) {
     console.error("Register error:", err);
     res.status(500).json({ message: "Server error" });
@@ -52,7 +66,7 @@ router.post("/login", async (req, res) => {
 
     const user = await User.findOne({
       $or: [{ email: emailOrUsername }, { username: emailOrUsername }],
-    });
+    }).select("+passwordHash");
 
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
