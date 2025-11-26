@@ -92,7 +92,6 @@ const Profile = () => {
   };
 
   const handleViewSubmissions = () => {
-    // change this path if your route is different
     navigate("/submissions");
   };
 
@@ -103,15 +102,14 @@ const Profile = () => {
 
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0); // last day of month
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    // build weeks (columns) of 7 days (rows)
     const weeks = [];
     let week = [];
 
-    const startDay = start.getDay(); // 0-6, Sunday start
+    const startDay = start.getDay();
     for (let i = 0; i < startDay; i++) {
-      week.push(null); // leading empty cells
+      week.push(null);
     }
 
     const dateToKey = (d) => d.toISOString().substring(0, 10);
@@ -225,7 +223,6 @@ const Profile = () => {
   const totalSubmissions = profile.totalSubmissions || 0;
   const duelWins = profile.duelWins || 0;
   const duelLosses = profile.duelLosses || 0;
-  const rating = profile.rating || 1500;
 
   const difficultyStats = stats?.difficultyStats || {
     Easy: profile.solvedEasy || 0,
@@ -240,6 +237,35 @@ const Profile = () => {
 
   const currentStreak = stats?.streakCurrent ?? profile.streakCurrent ?? 0;
   const longestStreak = stats?.streakLongest ?? profile.streakLongest ?? 0;
+
+  // ====== RATING LOGIC ======
+  const computeRating = () => {
+    const base = 1500;
+
+    // tune these weights however you like
+    const solvedWeight = 8; // points per solved problem
+    const duelWinPoints = 25;
+    const duelLossPoints = -15;
+    const streakWeight = 4; // per current streak day
+    const acceptanceWeight = 1.5; // per % acceptance
+
+    const solvedScore = totalSolved * solvedWeight;
+    const duelScore =
+      duelWins * duelWinPoints + duelLosses * duelLossPoints;
+    const streakScore = currentStreak * streakWeight;
+    const accuracyScore = Math.round(acceptanceRate * acceptanceWeight);
+
+    let rating = base + solvedScore + duelScore + streakScore + accuracyScore;
+
+    // clamp between 800 and 3000
+    rating = Math.max(800, Math.min(3000, rating));
+
+    return rating;
+  };
+
+  // if backend already stores rating, you can prefer that:
+  // const rating = profile.rating ?? computeRating();
+  const rating = computeRating();
 
   const displayName = profile.name || profile.username;
 

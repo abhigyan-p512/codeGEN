@@ -1,27 +1,29 @@
 // client/src/pages/DuelRoomPage.js
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { createDuelSocket } from "../utils/duelSocket";
 import MonacoCodeRunner from "../components/MonacoCodeRunner";
-import api from "../utils/api";
 import { useAuth } from "../context/AuthContext";
+import api from "../utils/api";
+import createDuelSocket from "../utils/duelSocket";
 
 const DEFAULT_LANGUAGE = "python";
 
 const styles = {
   page: {
-    padding: "20px 40px",
-    color: "#f9fafb",
+    minHeight: "100vh",
     background: "#020617",
-    minHeight: "calc(100vh - 60px)",
+    color: "#e5e7eb",
+    padding: "24px",
     boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "8px",
-    gap: "12px",
+    gap: "16px",
   },
   titleBlock: {
     display: "flex",
@@ -29,77 +31,85 @@ const styles = {
     gap: "4px",
   },
   title: {
-    fontSize: "28px",
-    fontWeight: 700,
     margin: 0,
+    fontSize: "26px",
+    fontWeight: 700,
   },
   status: {
-    fontSize: "14px",
-    opacity: 0.85,
+    fontSize: "13px",
+    opacity: 0.8,
   },
   substatus: {
-    fontSize: "15px",
-    marginBottom: "14px",
-    opacity: 0.8,
+    fontSize: "13px",
+    opacity: 0.75,
   },
   main: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1.7fr)",
+    gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1.3fr)",
     gap: "18px",
     alignItems: "stretch",
   },
   problemPanel: {
     background: "#020617",
     borderRadius: "14px",
-    padding: "16px 18px",
+    padding: "16px",
     border: "1px solid #1f2937",
     boxShadow: "0 0 0 1px rgba(15, 23, 42, 0.6)",
-    maxHeight: "calc(100vh - 170px)",
     overflowY: "auto",
+    maxHeight: "calc(100vh - 170px)",
   },
   problemTitle: {
-    fontSize: "20px",
+    marginTop: 0,
     marginBottom: "8px",
+    fontSize: "18px",
+    fontWeight: 600,
   },
   problemDescription: {
     fontSize: "14px",
-    lineHeight: 1.5,
-    marginBottom: "12px",
+    lineHeight: 1.6,
     whiteSpace: "pre-wrap",
   },
   problemSubheading: {
-    marginTop: "14px",
+    marginTop: "16px",
     marginBottom: "6px",
-    fontSize: "15px",
+    fontSize: "14px",
+    fontWeight: 600,
   },
   problemConstraints: {
     background: "#020617",
     borderRadius: "8px",
-    border: "1px solid #111827",
-    padding: "8px 10px",
+    border: "1px solid #1f2937",
+    padding: "8px",
     fontSize: "13px",
     whiteSpace: "pre-wrap",
   },
   exampleBox: {
-    background: "#020617",
-    borderRadius: "10px",
-    padding: "10px 12px",
     marginBottom: "10px",
-    border: "1px solid #111827",
+    padding: "8px",
+    borderRadius: "8px",
+    border: "1px solid #1f2937",
+    background: "#020617",
   },
   exampleBlock: {
-    marginBottom: "6px",
+    marginBottom: "4px",
+    fontSize: "13px",
   },
   examplePre: {
-    margin: "4px 0 0 0",
-    fontSize: "13px",
+    margin: "4px 0 0",
+    padding: "6px",
+    borderRadius: "6px",
+    background: "#020617",
+    border: "1px solid #111827",
+    fontSize: "12px",
     whiteSpace: "pre-wrap",
   },
   waitingProblemTitle: {
-    margin: "0 0 4px 0",
+    margin: 0,
+    marginBottom: "6px",
+    fontSize: "16px",
+    fontWeight: 600,
   },
   waitingProblemText: {
-    margin: 0,
     fontSize: "14px",
     opacity: 0.8,
   },
@@ -117,8 +127,6 @@ const styles = {
     flex: 1,
     minHeight: 0,
   },
-
-  // Header actions (buttons)
   headerActions: {
     display: "flex",
     alignItems: "center",
@@ -159,11 +167,49 @@ const styles = {
     borderColor: "#334155",
     color: "#e5e7eb",
   },
+
+  // Winner / loser banner
+  resultBanner: {
+    marginTop: "6px",
+    padding: "8px 12px",
+    borderRadius: "9999px",
+    fontSize: "13px",
+    fontWeight: 500,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  resultWin: {
+    background: "rgba(34,197,94,0.1)",
+    border: "1px solid rgba(34,197,94,0.4)",
+    color: "#bbf7d0",
+  },
+  resultLose: {
+    background: "rgba(239,68,68,0.1)",
+    border: "1px solid rgba(239,68,68,0.4)",
+    color: "#fecaca",
+  },
+  resultDraw: {
+    background: "rgba(148,163,184,0.15)",
+    border: "1px solid rgba(148,163,184,0.4)",
+    color: "#e5e7eb",
+  },
+  resultSummary: {
+    marginTop: "4px",
+    fontSize: "12px",
+    opacity: 0.85,
+  },
+  resultRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "8px",
+  },
 };
 
 export default function DuelRoomPage() {
   const { roomId } = useParams();
   const { user } = useAuth();
+
   const [socket, setSocket] = useState(null);
   const [problem, setProblem] = useState(null);
   const [status, setStatus] = useState("Waiting to start");
@@ -175,169 +221,293 @@ export default function DuelRoomPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [copyLabel, setCopyLabel] = useState("Copy duel code");
 
-  // ---------------------------- SOCKET SETUP ----------------------------
-  // 1) create socket once
+  const [players, setPlayers] = useState([]);
+  const [isHost, setIsHost] = useState(false);
+
+  // NEW: winner/loser/draw + summary
+  const [duelOutcome, setDuelOutcome] = useState(null); // "win" | "lose" | "draw" | null
+  const [duelSummary, setDuelSummary] = useState(null);
+
+  // -------- SOCKET SETUP + JOIN in ONE EFFECT --------
   useEffect(() => {
-    const s = createDuelSocket(); // URL + token handled inside duelSocket.js :contentReference[oaicite:5]{index=5}
+    if (!roomId) return;
+
+    const s = createDuelSocket();
     setSocket(s);
 
-    // server will send problem + meta on "duel_started" :contentReference[oaicite:6]{index=6}
-    s.on("duel_started", (payload) => {
-      if (payload?.problem) {
-        setProblem(payload.problem);
-      }
+    const handleDuelStarted = (payload) => {
+      console.log("duel_started payload", payload);
+      if (payload?.problem) setProblem(payload.problem);
       setStatus("Duel in progress");
       setHasStarted(true);
-    });
 
-    s.on("duel_error", (err) => {
+      // reset outcome when a new duel starts
+      setDuelOutcome(null);
+      setDuelSummary(null);
+    };
+
+    const handleDuelError = (err) => {
+      console.log("duel_error", err);
       setStatus(err?.message || "Duel error");
-    });
+      setHasStarted(false);
+    };
 
-    s.on("duel_finished", (payload) => {
-      if (payload?.winner) {
-        setStatus("Duel finished – winner decided");
-      } else {
-        setStatus("Duel finished – draw");
+    const handleDuelFinished = (payload) => {
+      console.log("duel_finished", payload);
+      if (!payload) return;
+
+      const { winner, summary } = payload;
+      const myId = user?._id || user?.id || null;
+
+      let outcome = "draw";
+      if (winner) {
+        if (myId && String(winner) === String(myId)) {
+          outcome = "win";
+        } else {
+          outcome = "lose";
+        }
       }
+
+      if (outcome === "win") {
+        setStatus("Duel finished – you won! 🏆");
+      } else if (outcome === "lose") {
+        setStatus("Duel finished – you lost ❌");
+      } else {
+        setStatus("Duel finished – draw 🤝");
+      }
+
+      setDuelOutcome(outcome);
+      setDuelSummary(summary || null);
+      setHasStarted(false);
+    };
+
+    const handleRoomUpdate = ({ players = [], started } = {}) => {
+      console.log("room_update", players, started);
+      setPlayers(players);
+      setHasStarted(!!started);
+    };
+
+    const handleRole = ({ isHost }) => {
+      console.log("duel_role", isHost);
+      setIsHost(!!isHost);
+    };
+
+    s.on("duel_started", handleDuelStarted);
+    s.on("duel_error", handleDuelError);
+    s.on("duel_finished", handleDuelFinished);
+    s.on("room_update", handleRoomUpdate);
+    s.on("duel_role", handleRole);
+
+    s.on("connect", () => {
+      const userId = user?._id || user?.id || null;
+      console.log("socket connected on client, emitting join_duel", {
+        roomId,
+        userId,
+      });
+      s.emit("join_duel", { roomId, userId });
     });
 
     return () => {
+      s.off("duel_started", handleDuelStarted);
+      s.off("duel_error", handleDuelError);
+      s.off("duel_finished", handleDuelFinished);
+      s.off("room_update", handleRoomUpdate);
+      s.off("duel_role", handleRole);
       s.disconnect();
     };
-  }, []);
+  }, [roomId, user]);
 
-  // 2) join the duel room once we know socket + user + roomId
-  useEffect(() => {
-    if (!socket) return;
-    if (!roomId || !user?._id) return;
-
-    socket.emit("join_duel", { roomId, userId: user._id }); // :contentReference[oaicite:7]{index=7}
-  }, [socket, roomId, user]);
-
-  // ---------------------------- ACTIONS ----------------------------
-  // Run against example input via /judge/run (like ProblemPage) :contentReference[oaicite:8]{index=8}
-  const handleRun = useCallback(async () => {
-    if (!problem) {
-      setRunOutput("Problem not loaded yet.");
-      return;
-    }
-    try {
-      setIsRunning(true);
-      setRunOutput("Running...");
-
-      const sampleInput = problem.exampleTests?.[0]?.input || "";
-
-      const res = await api.post("/judge/run", {
-        code,
-        language,
-        input: sampleInput,
-      });
-
-      const out =
-        res.data.output ||
-        res.data.stdout ||
-        "No output received from runner.";
-      setRunOutput(out);
-    } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        "Error executing code.";
-      setRunOutput(msg);
-    } finally {
-      setIsRunning(false);
-    }
-  }, [problem, code, language]);
-
-  // Submit to duel via socket
-  const handleSubmit = useCallback(() => {
-    if (!socket) {
-      setRunOutput("Socket not connected.");
-      return;
-    }
-    if (!user) {
-      setRunOutput("You must be logged in to submit.");
-      return;
-    }
-    if (!problem) {
-      setRunOutput("Problem not loaded yet.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setRunOutput("Submitting to duel...");
-
-    socket.emit(
-      "duel_submit_code",
-      {
-        roomId,
-        userId: user._id,
-        code,
-        languageId: language, // server expects "python" | "javascript" | "cpp" strings :contentReference[oaicite:9]{index=9}
-      },
-      (res) => {
-        setIsSubmitting(false);
-
-        if (!res || !res.ok) {
-          setRunOutput(res?.message || "Submit failed.");
-          return;
-        }
-
-        const judge = res.judge || {};
-        const statusText =
-          judge.status?.description ||
-          (res.accepted ? "Accepted" : "Some tests failed");
-
-        if (res.accepted) {
-          setRunOutput(
-            `Accepted! ✅\n\n${judge.stdout || ""}`.trim() || "Accepted! ✅"
-          );
-        } else {
-          setRunOutput(
-            `Some tests failed. ❌\n\nStatus: ${statusText}\n\n${
-              judge.stderr || judge.stdout || ""
-            }`
-          );
-        }
+  // -------------------- ACTIONS --------------------
+  const handleRun = useCallback(
+    async () => {
+      if (!problem) {
+        setRunOutput("Problem not loaded yet.");
+        return;
       }
+      try {
+        setIsRunning(true);
+        setRunOutput("Running...");
+
+        const sampleInput = problem.exampleTests?.[0]?.input || "";
+
+        const res = await api.post("/judge/run", {
+          code,
+          language,
+          input: sampleInput,
+        });
+
+        const out =
+          res.data.output ||
+          res.data.stdout ||
+          "No output received from runner.";
+        setRunOutput(out);
+      } catch (err) {
+        const msg =
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          "Error executing code.";
+        setRunOutput(msg);
+      } finally {
+        setIsRunning(false);
+      }
+    },
+    [problem, code, language]
+  );
+
+  const handleSubmit = useCallback(
+    () => {
+      if (!socket) {
+        setRunOutput("Socket not connected.");
+        return;
+      }
+      if (!user) {
+        setRunOutput("You must be logged in to submit.");
+        return;
+      }
+      if (!problem) {
+        setRunOutput("Problem not loaded yet.");
+        return;
+      }
+
+      // use same logic as join_duel for userId
+      const userId = user?._id || user?.id;
+      if (!userId) {
+        setRunOutput("Unable to determine user id for submission.");
+        return;
+      }
+
+      setIsSubmitting(true);
+      setRunOutput("Submitting to duel...");
+
+      socket.emit(
+        "duel_submit_code",
+        {
+          roomId,
+          userId,
+          code,
+          languageId: language,
+        },
+        (res) => {
+          setIsSubmitting(false);
+
+          if (!res || !res.ok) {
+            setRunOutput(res?.message || "Submit failed.");
+            return;
+          }
+
+          const judge = res.judge || {};
+          const statusText =
+            judge.status?.description ||
+            (res.accepted ? "Accepted" : "Some tests failed");
+
+          if (res.accepted) {
+            setRunOutput(
+              `Accepted! ✅\n\n${judge.stdout || ""}`.trim() || "Accepted! ✅"
+            );
+          } else {
+            setRunOutput(
+              `Some tests failed. ❌\n\nStatus: ${statusText}\n\n${
+                judge.stderr || judge.stdout || ""
+              }`
+            );
+          }
+        }
+      );
+    },
+    [socket, roomId, user, code, language, problem]
+  );
+
+  const handleStartDuel = useCallback(
+    () => {
+      if (!socket || hasStarted || !isHost) return;
+
+      setStatus("Starting duel...");
+
+      console.log("start_duel emit", { roomId, userId: user?._id || user?.id });
+
+      socket.emit(
+        "start_duel",
+        { roomId, userId: user?._id || user?.id },
+        (res = {}) => {
+          console.log("start_duel ack", res);
+          if (!res.ok) {
+            setStatus(res.message || "Failed to start duel");
+            setHasStarted(false);
+          }
+        }
+      );
+    },
+    [socket, roomId, user, hasStarted, isHost]
+  );
+
+  const handleCopyCode = useCallback(
+    async () => {
+      if (!roomId) return;
+      try {
+        await navigator.clipboard.writeText(roomId);
+        setCopyLabel("Copied!");
+      } catch {
+        setCopyLabel("Failed to copy");
+      }
+      setTimeout(() => setCopyLabel("Copy duel code"), 1500);
+    },
+    [roomId]
+  );
+
+  const startDisabled = !socket || hasStarted || !isHost;
+
+  const renderSummary = () => {
+    if (!duelSummary?.submissions || duelSummary.submissions.length === 0) {
+      return null;
+    }
+
+    const myId = user?._id || user?.id || null;
+
+    return (
+      <div style={styles.resultSummary}>
+        <div style={{ marginBottom: 2 }}>Results:</div>
+        {duelSummary.submissions.map((sub) => (
+          <div key={sub.userId} style={styles.resultRow}>
+            <span>
+              {myId && String(sub.userId) === String(myId)
+                ? "You"
+                : sub.userId.slice(0, 6) + "..."}
+            </span>
+            <span>
+              {sub.passed}/{sub.total} tests
+            </span>
+          </div>
+        ))}
+      </div>
     );
-  }, [socket, roomId, user, code, language, problem]);
+  };
 
-  const handleStartDuel = useCallback(() => {
-    if (!socket || hasStarted) return;
-
-    setStatus("Starting duel...");
-    setHasStarted(true);
-
-    socket.emit("start_duel", { roomId }, (res) => {
-      if (!res || !res.ok) {
-        setHasStarted(false);
-        setStatus(res?.message || "Failed to start duel");
-      }
-      // on success, server will emit "duel_started" which sets problem + status
-    });
-  }, [socket, roomId, hasStarted]);
-
-  const handleCopyCode = useCallback(async () => {
-    if (!roomId) return;
-    try {
-      await navigator.clipboard.writeText(roomId);
-      setCopyLabel("Copied!");
-    } catch {
-      setCopyLabel("Failed to copy");
-    }
-    setTimeout(() => setCopyLabel("Copy duel code"), 1500);
-  }, [roomId]);
-
-  const startDisabled = !socket || hasStarted;
-
+  // -------------------- RENDER --------------------
   return (
     <div style={styles.page}>
       <header style={styles.header}>
         <div style={styles.titleBlock}>
           <h1 style={styles.title}>1v1 Duel Room</h1>
           <div style={styles.status}>{status}</div>
+
+          {duelOutcome && (
+            <div
+              style={{
+                ...styles.resultBanner,
+                ...(duelOutcome === "win"
+                  ? styles.resultWin
+                  : duelOutcome === "lose"
+                  ? styles.resultLose
+                  : styles.resultDraw),
+              }}
+            >
+              {duelOutcome === "win" && "🏆 You won the duel!"}
+              {duelOutcome === "lose" && "❌ You lost the duel."}
+              {duelOutcome === "draw" && "🤝 Duel ended in a draw."}
+            </div>
+          )}
+
+          {duelOutcome && renderSummary()}
         </div>
 
         <div style={styles.headerActions}>
@@ -347,27 +517,37 @@ export default function DuelRoomPage() {
 
           <button
             type="button"
-            style={{
-              ...styles.buttonBase,
-              ...styles.copyButton,
-            }}
+            style={{ ...styles.buttonBase, ...styles.copyButton }}
             onClick={handleCopyCode}
           >
             {copyLabel}
           </button>
 
-          <button
-            type="button"
-            style={{
-              ...styles.buttonBase,
-              ...styles.startButton,
-              ...(startDisabled ? styles.startButtonDisabled : {}),
-            }}
-            onClick={handleStartDuel}
-            disabled={startDisabled}
-          >
-            {hasStarted ? "Duel started" : "Start Duel"}
-          </button>
+          {isHost ? (
+            <button
+              type="button"
+              style={{
+                ...styles.buttonBase,
+                ...styles.startButton,
+                ...(startDisabled ? styles.startButtonDisabled : {}),
+              }}
+              onClick={handleStartDuel}
+              disabled={startDisabled}
+            >
+              {hasStarted ? "Duel started" : "Start Duel"}
+            </button>
+          ) : (
+            !hasStarted && (
+              <div
+                style={{
+                  fontSize: "12px",
+                  opacity: 0.7,
+                }}
+              >
+                Waiting for host to start the duel…
+              </div>
+            )
+          )}
         </div>
       </header>
 
@@ -376,7 +556,6 @@ export default function DuelRoomPage() {
       </div>
 
       <div style={styles.main}>
-        {/* -------- LEFT: Problem Statement -------- */}
         <section style={styles.problemPanel}>
           {problem ? (
             <>
@@ -428,7 +607,6 @@ export default function DuelRoomPage() {
           )}
         </section>
 
-        {/* -------- RIGHT: Monaco Code Runner -------- */}
         <section style={styles.editorPanel}>
           <div style={styles.editorPanelChild}>
             <MonacoCodeRunner

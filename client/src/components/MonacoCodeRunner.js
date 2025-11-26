@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import "./MonacoCodeRunner.css";
 
@@ -65,6 +65,32 @@ int main(void) {
 }`,
 };
 
+// ---- Accessibility fix for Monaco tooltips ----
+function useFixMonacoTooltips() {
+  useEffect(() => {
+    const fixTooltips = () => {
+      const nodes = document.querySelectorAll(
+        '.monaco-hover[role="tooltip"]:not([aria-label]):not([aria-hidden="true"])'
+      );
+      nodes.forEach((el) => {
+        const text = el.textContent?.trim();
+        if (!text) return;
+        // give tooltip an accessible name (trim so it doesn't get huge)
+        el.setAttribute("aria-label", text.slice(0, 120));
+      });
+    };
+
+    // initial run
+    fixTooltips();
+
+    // observe DOM for new Monaco hover widgets
+    const observer = new MutationObserver(fixTooltips);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, []);
+}
+
 export default function MonacoCodeRunner({
   value,
   onChange,
@@ -78,6 +104,8 @@ export default function MonacoCodeRunner({
   allowSubmit = true,
   readOnly = false,
 }) {
+  useFixMonacoTooltips(); // <-- accessibility hook
+
   const code = value ?? DEFAULT_SNIPPETS[language] ?? "";
 
   const handleLanguageChange = (event) => {
@@ -161,4 +189,3 @@ export default function MonacoCodeRunner({
     </div>
   );
 }
-
