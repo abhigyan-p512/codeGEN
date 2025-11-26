@@ -5,30 +5,26 @@ const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const User = require("../models/User");
 const Submission = require("../models/Submission");
-const Problem = require("../models/Problem");
 
-// Helper: compute stats + streaks + daily activity for a user
+// ---------- Helper: compute per-user stats ----------
 async function computeUserStats(userId) {
-  // Oldest -> newest for streak calculation
+  // 🔥 IMPORTANT: filter by userId
   const submissions = await Submission.find({ user: userId })
     .sort({ createdAt: 1 })
-    .populate("problem", "title difficulty");
+    .populate("problem", "difficulty");
 
   const totalSubmissions = submissions.length;
 
   const difficultyStats = { Easy: 0, Medium: 0, Hard: 0 };
   const languageStats = {};
   const solvedProblemMap = new Map();
+  const solvedDates = new Set(); // YYYY-MM-DD with at least one AC
 
-  // For streaks we track days with Accepted submissions
-  const solvedDates = new Set(); // YYYY-MM-DD for accepted subs
-
-  // For activity heatmap we track ALL submissions per day (past year)
   const now = new Date();
-  const startYear = new Date(now);
-  startYear.setDate(startYear.getDate() - 365);
+  const yearAgo = new Date(now);
+  yearAgo.setDate(yearAgo.getDate() - 365);
 
-  const dailySubmissions = {}; // { 'YYYY-MM-DD': count }
+  const dailySubmissions = {}; // { "YYYY-MM-DD": count }
 
   for (const sub of submissions) {
     const lang = sub.language || sub.lang;
@@ -36,7 +32,7 @@ async function computeUserStats(userId) {
       languageStats[lang] = (languageStats[lang] || 0) + 1;
     }
 
-    // difficulty / solved stats from Accepted submissions
+    // Accepted submissions → solved counts + streak dates
     if (sub.status === "Accepted" && sub.problem) {
       const pid = String(sub.problem._id);
       const diff = sub.problem.difficulty || "Easy";
@@ -47,15 +43,15 @@ async function computeUserStats(userId) {
       }
 
       if (sub.createdAt) {
-        const dateKey = sub.createdAt.toISOString().substring(0, 10);
-        solvedDates.add(dateKey);
+        const d = sub.createdAt.toISOString().substring(0, 10);
+        solvedDates.add(d);
       }
     }
 
-    // daily submission counts for last year (all statuses)
-    if (sub.createdAt && sub.createdAt >= startYear) {
-      const dateKey = sub.createdAt.toISOString().substring(0, 10);
-      dailySubmissions[dateKey] = (dailySubmissions[dateKey] || 0) + 1;
+    // all submissions counted in activity (past year)
+    if (sub.createdAt && sub.createdAt >= yearAgo) {
+      const d = sub.createdAt.toISOString().substring(0, 10);
+      dailySubmissions[d] = (dailySubmissions[d] || 0) + 1;
     }
   }
 
@@ -64,60 +60,50 @@ async function computeUserStats(userId) {
   const solvedHard = difficultyStats.Hard || 0;
   const totalSolved = solvedEasy + solvedMedium + solvedHard;
 
-  // ---- streaks (based on Accepted days) ----
+  // ---------- streaks (from Accepted days) ----------
   let streakCurrent = 0;
   let streakLongest = 0;
 
-  const dates = Array.from(solvedDates).sort(); // ascending
-
+  const dates = Array.from(solvedDates).sort();
   if (dates.length > 0) {
-    const toDateObj = (d) => new Date(d + "T00:00:00Z");
+    const toDate = (s) => new Date(s + "T00:00:00Z");
 
-    // longest streak overall
+    // longest
     let run = 1;
     streakLongest = 1;
     for (let i = 1; i < dates.length; i++) {
-      const prev = toDateObj(dates[i - 1]);
-      const curr = toDateObj(dates[i]);
-      const diffDays = Math.round(
-        (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (diffDays === 1) {
-        run++;
-      } else {
-        run = 1;
-      }
+      const prev = toDate(dates[i - 1]);
+      const curr = toDate(dates[i]);
+      const diffDays =
+        (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays === 1) run++;
+      else run = 1;
       if (run > streakLongest) streakLongest = run;
     }
 
-    // current streak (ending at latest active Accepted day)
+    // current (ending at latest accepted day)
     streakCurrent = 1;
     for (let i = dates.length - 1; i > 0; i--) {
-      const curr = toDateObj(dates[i]);
-      const prev = toDateObj(dates[i - 1]);
-      const diffDays = Math.round(
-        (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (diffDays === 1) {
-        streakCurrent++;
-      } else {
-        break;
-      }
+      const curr = toDate(dates[i]);
+      const prev = toDate(dates[i - 1]);
+      const diffDays =
+        (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays === 1) streakCurrent++;
+      else break;
     }
   }
 
-  // ---- daily activity array for the last year ----
+  // ---------- activity array ----------
   const activityByDate = Object.entries(dailySubmissions)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, count]) => ({ date, count }));
 
   const submissionsPastYear = activityByDate.reduce(
-    (sum, day) => sum + day.count,
+    (sum, d) => sum + d.count,
     0
   );
   const activeDaysPastYear = activityByDate.length;
 
-  // recent submissions (newest first, limit 20) – not used on UI now, but handy
   const recentSubmissions = submissions
     .slice()
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -140,7 +126,7 @@ async function computeUserStats(userId) {
   };
 }
 
-// Helper: map a user + stats to profile JSON
+// ---------- Helper: map user + stats to profile ----------
 function mapUserProfile(user, stats) {
   return {
     _id: user._id,
@@ -148,7 +134,6 @@ function mapUserProfile(user, stats) {
     email: user.email,
     createdAt: user.createdAt,
 
-    // editable profile fields
     name: user.name || "",
     bio: user.bio || "",
     location: user.location || "",
@@ -156,12 +141,15 @@ function mapUserProfile(user, stats) {
     linkedinUrl: user.linkedinUrl || "",
     website: user.website || "",
 
-    // rating / duels
     rating: user.rating || 1500,
+
+    // duel + team battle counters are PER USER here
     duelWins: user.duelWins || 0,
     duelLosses: user.duelLosses || 0,
+    teamBattlesPlayed: user.teamBattlesPlayed || 0,
+    teamBattlesWon: user.teamBattlesWon || 0,
+    teamBattlesLost: user.teamBattlesLost || 0,
 
-    // stats snapshot for profile card
     totalSubmissions: stats.totalSubmissions,
     totalSolved: stats.totalSolved,
     solvedEasy: stats.solvedEasy,
@@ -172,15 +160,15 @@ function mapUserProfile(user, stats) {
   };
 }
 
-// GET /users/me - profile + aggregated stats
+// ---------- GET /users/me ----------
 router.get("/me", authMiddleware, async (req, res) => {
   try {
-    if (!req.user || !req.user.id) {
+    if (!req.user?.id) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
     const user = await User.findById(req.user.id).select(
-      "-password -__v -resetToken -resetExpires"
+      "-passwordHash -resetToken -resetExpires -__v"
     );
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -194,10 +182,10 @@ router.get("/me", authMiddleware, async (req, res) => {
   }
 });
 
-// PUT /users/me - edit profile (name, bio, location, links)
+// ---------- PUT /users/me (edit profile) ----------
 router.put("/me", authMiddleware, async (req, res) => {
   try {
-    if (!req.user || !req.user.id) {
+    if (!req.user?.id) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
@@ -213,7 +201,7 @@ router.put("/me", authMiddleware, async (req, res) => {
 
     const user = await User.findByIdAndUpdate(req.user.id, updates, {
       new: true,
-    }).select("-password -__v -resetToken -resetExpires");
+    }).select("-passwordHash -resetToken -resetExpires -__v");
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -227,14 +215,19 @@ router.put("/me", authMiddleware, async (req, res) => {
   }
 });
 
-// GET /users/me/stats - stats + streaks + daily activity
+// ---------- GET /users/me/stats ----------
 router.get("/me/stats", authMiddleware, async (req, res) => {
   try {
-    if (!req.user || !req.user.id) {
+    if (!req.user?.id) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const stats = await computeUserStats(req.user.id);
+    const [stats, user] = await Promise.all([
+      computeUserStats(req.user.id),
+      User.findById(req.user.id).select(
+        "rating duelWins duelLosses teamBattlesPlayed teamBattlesWon teamBattlesLost"
+      ),
+    ]);
 
     return res.json({
       difficultyStats: stats.difficultyStats,
@@ -250,36 +243,16 @@ router.get("/me/stats", authMiddleware, async (req, res) => {
       submissionsPastYear: stats.submissionsPastYear,
       activeDaysPastYear: stats.activeDaysPastYear,
       recent: stats.recentSubmissions,
+
+      rating: user?.rating ?? 1500,
+      duelWins: user?.duelWins ?? 0,
+      duelLosses: user?.duelLosses ?? 0,
+      teamBattlesPlayed: user?.teamBattlesPlayed ?? 0,
+      teamBattlesWon: user?.teamBattlesWon ?? 0,
+      teamBattlesLost: user?.teamBattlesLost ?? 0,
     });
   } catch (err) {
     console.error("GET /users/me/stats error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-});
-
-// (Optional legacy route)
-router.get("/profile", authMiddleware, async (req, res) => {
-  try {
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    const user = await User.findById(req.user.id).select(
-      "-password -__v -resetToken -resetExpires"
-    );
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    return res.json({
-      id: user._id,
-      name: user.name || user.username,
-      username: user.username,
-      email: user.email,
-      avatarUrl: user.avatarUrl || null,
-      bio: user.bio || "",
-      joinedAt: user.createdAt,
-    });
-  } catch (err) {
-    console.error("GET /users/profile error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 });

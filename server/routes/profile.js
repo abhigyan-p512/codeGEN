@@ -1,3 +1,4 @@
+// server/routes/profile.js
 const express = require("express");
 const User = require("../models/User");
 const Submission = require("../models/Submission");
@@ -8,7 +9,12 @@ const router = express.Router();
 // GET /profile/me - get current user info + stats
 router.get("/me", authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // 🔧 FIX: use req.user.id (set by authMiddleware)
+    const userId = req.user.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
 
     const user = await User.findById(userId).select("username email createdAt");
     if (!user) {

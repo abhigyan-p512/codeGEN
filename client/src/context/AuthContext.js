@@ -1,72 +1,68 @@
-// src/context/AuthContext.js
+// client/src/context/AuthContext.js
+
 import React, { createContext, useContext, useState, useEffect } from "react";
+import api from "../utils/api";
 
-const AuthContext = createContext(null);
+const AuthContext = createContext();
 
-export function AuthProvider({ children }) {
+export const AuthProvider = ({ children }) => {
+  const storedToken = localStorage.getItem("token");
+  const [token, setToken] = useState(storedToken);
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Load from localStorage on mount (safely)
+  // Fetch logged-in user profile when token changes
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem("token");
-      const storedUserRaw = localStorage.getItem("user");
-
-      if (storedToken) {
-        setToken(storedToken);
+    const fetchUserProfile = async () => {
+      try {
+        setLoading(true);
+        const res = await api.get("/users/me");
+        setUser(res.data);
+      } catch (err) {
+        console.error("Failed to fetch user profile:", err);
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
+    };
 
-      if (storedUserRaw && storedUserRaw !== "undefined") {
-        try {
-          const parsedUser = JSON.parse(storedUserRaw);
-          setUser(parsedUser);
-        } catch (err) {
-          console.warn("Failed to parse stored user, clearing it:", err);
-          localStorage.removeItem("user");
-        }
-      } else if (storedUserRaw === "undefined") {
-        // clean up bad leftover value
-        localStorage.removeItem("user");
-      }
-    } catch (err) {
-      console.warn("Error reading auth from localStorage:", err);
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+    if (token) {
+      fetchUserProfile();
+    } else {
+      setUser(null);
+      setLoading(false);
     }
+  }, [token]);
+
+  // Sync changes across browser tabs (fix for multi-tab same profile issue)
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.key === "token") {
+        setToken(event.newValue); // triggers user refetch
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  // Login: save to state + localStorage
-  function login(newToken, newUser) {
-    setToken(newToken || null);
-    setUser(newUser || null);
+  const login = (newToken, userData) => {
+    localStorage.setItem("token", newToken);
+    setToken(newToken);
+    setUser(userData);
+  };
 
-    if (newToken) {
-      localStorage.setItem("token", newToken);
-    } else {
-      localStorage.removeItem("token");
-    }
-
-    if (newUser) {
-      localStorage.setItem("user", JSON.stringify(newUser));
-    } else {
-      localStorage.removeItem("user");
-    }
-  }
-
-  // Logout: clear everything
-  function logout() {
+  const logout = () => {
+    localStorage.removeItem("token");
     setToken(null);
     setUser(null);
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-  }
+  };
 
-  const value = { user, token, login, logout };
+  return (
+    <AuthContext.Provider value={{ token, user, login, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export const useAuth = () => useContext(AuthContext);

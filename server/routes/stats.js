@@ -9,9 +9,9 @@ router.get("/leaderboard", async (req, res) => {
   try {
     const users = await User.find({})
       .select(
-        "username rating duelWins duelLosses totalSolved solvedEasy solvedMedium solvedHard totalSubmissions contestsPlayed contestsWon"
+        "username rating duelWins duelLosses teamBattlesPlayed teamBattlesWon teamBattlesLost"
       )
-      .sort({ rating: -1, totalSolved: -1 })
+      .sort({ rating: -1 })
       .limit(50);
 
     res.json(users);

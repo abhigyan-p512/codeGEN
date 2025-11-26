@@ -48,7 +48,7 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Stats / rating
+    // Ratings / duels
     rating: {
       type: Number,
       default: 1500,
@@ -62,7 +62,29 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // If you already had extra fields, add them around here
+    // 🔥 Team battle stats
+    teamBattlesPlayed: {
+      type: Number,
+      default: 0,
+    },
+    teamBattlesWon: {
+      type: Number,
+      default: 0,
+    },
+    teamBattlesLost: {
+      type: Number,
+      default: 0,
+    },
+
+    // If you already had extra fields, keep them around here
+    resetToken: {
+      type: String,
+      select: false,
+    },
+    resetExpires: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true, // createdAt, updatedAt

@@ -1,17 +1,18 @@
-// src/utils/api.js
+// client/src/utils/api.js
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:5000",
+  baseURL: "http://localhost:5000", // change if your server URL/port differs
 });
 
-// Attach JWT token from localStorage on every request
+// Always attach the *current* token from localStorage
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
     if (token) {
-      // 👈 this is what authMiddleware expects
       config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      delete config.headers.Authorization;
     }
     return config;
   },
