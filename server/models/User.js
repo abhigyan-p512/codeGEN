@@ -76,6 +76,16 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
 
+    // 🔥 Contest stats (for leaderboard)
+    contestsPlayed: {
+      type: Number,
+      default: 0,
+    },
+    contestsWon: {
+      type: Number,
+      default: 0,
+    },
+
     // If you already had extra fields, keep them around here
     resetToken: {
       type: String,

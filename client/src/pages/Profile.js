@@ -315,7 +315,73 @@ const Profile = () => {
   const currentStreak = stats?.streakCurrent ?? profile.streakCurrent ?? 0;
   const longestStreak = stats?.streakLongest ?? profile.streakLongest ?? 0;
 
-  const rating = profile.rating || stats?.rating || 1500;
+  // ====== Rating system logic ======
+
+  // Core formula for rating based on performance
+  const computeRating = ({
+    totalSolved,
+    acceptanceRate,
+    duelWins,
+    duelLosses,
+    teamBattlesWon,
+    teamBattlesPlayed,
+    longestStreak,
+  }) => {
+    const base = 1000;
+
+    // problems solved – capped influence so it doesn't explode
+    const solvedScore = Math.min(totalSolved, 800) * 3; // max 2400
+
+    // acceptance rate gives efficiency bonus
+    const acceptanceScore = Math.round((acceptanceRate / 100) * 300); // 0–300
+
+    // duels: wins help more than losses hurt
+    const duelScore = duelWins * 35 - duelLosses * 15; // can be negative
+
+    // team battles (small influence)
+    const teamScore =
+      teamBattlesWon * 20 +
+      Math.max(teamBattlesPlayed - teamBattlesWon - teamBattlesLost, 0) * 5;
+
+    // streak bonus – encourages consistency
+    const streakScore = Math.min(longestStreak, 60) * 8; // capped
+
+    let rating = base + solvedScore + acceptanceScore + duelScore + teamScore + streakScore;
+
+    // clamp rating between 800 and 2800
+    rating = Math.max(800, Math.min(2800, rating));
+
+    return rating;
+  };
+
+  const getRatingTier = (rating) => {
+    if (rating < 1000) return { label: "Newbie", color: "#9ca3af" };
+    if (rating < 1400) return { label: "Bronze", color: "#f97316" };
+    if (rating < 1700) return { label: "Silver", color: "#e5e7eb" };
+    if (rating < 2000) return { label: "Gold", color: "#facc15" };
+    if (rating < 2300) return { label: "Platinum", color: "#38bdf8" };
+    return { label: "Legend", color: "#a855f7" };
+  };
+
+  // if backend already sends rating, use that; otherwise compute from stats
+  const computedRating = computeRating({
+    totalSolved,
+    acceptanceRate,
+    duelWins,
+    duelLosses,
+    teamBattlesWon,
+    teamBattlesPlayed,
+    longestStreak,
+  });
+
+  const baseRating =
+    stats?.rating ??
+    profile.rating ??
+    computedRating;
+
+  const rating = Math.round(baseRating);
+  const ratingTier = getRatingTier(rating);
+
   const displayName = profile.name || profile.username;
 
   const {
@@ -466,18 +532,39 @@ const Profile = () => {
                 border: "1px solid rgba(96,165,250,0.7)",
                 background:
                   "radial-gradient(circle at top, rgba(37,99,235,0.35), transparent 60%), #020617",
-                minWidth: 170,
+                minWidth: 190,
               }}
             >
               <div
                 style={{
-                  fontSize: 11,
-                  color: "#9ca3af",
-                  textTransform: "uppercase",
-                  letterSpacing: 0.1,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 4,
                 }}
               >
-                Rating
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#9ca3af",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.1,
+                  }}
+                >
+                  Rating
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(148,163,184,0.4)",
+                    color: ratingTier.color,
+                    background: "rgba(15,23,42,0.8)",
+                  }}
+                >
+                  {ratingTier.label}
+                </span>
               </div>
               <div
                 style={{

@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 require("dotenv").config();
+const statsRoutes = require("./routes/stats");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -57,6 +58,7 @@ if (contestRoutes) app.use("/contests", contestRoutes);
 if (teamRoutes) app.use("/teams", teamRoutes);
 if (duelRoutes) app.use("/duels", duelRoutes);
 if (userRoutes) app.use("/users", userRoutes);
+app.use("/stats", statsRoutes);
 // ✅ mount team battles
 if (teamBattleRoutes) app.use("/team-battles", teamBattleRoutes);
 

@@ -28,10 +28,17 @@ export default function LeaderboardPage() {
 
   const formatAccuracy = (u) => {
     const totalSub = u.totalSubmissions || 0;
-    const solved = u.totalSolved || 0;
+    const accepted = u.acceptedSubmissions ?? u.totalSolved ?? 0;
     if (!totalSub) return "–";
-    const pct = (solved / totalSub) * 100;
+    const pct = (accepted / totalSub) * 100;
     return `${pct.toFixed(1)}%`;
+  };
+
+  const renderRank = (index) => {
+    if (index === 0) return "🥇";
+    if (index === 1) return "🥈";
+    if (index === 2) return "🥉";
+    return index + 1;
   };
 
   return (
@@ -41,14 +48,14 @@ export default function LeaderboardPage() {
           <div>
             <h1 className="page-heading">🏆 Global Leaderboard</h1>
             <p className="page-subtitle">
-              See who&apos;s crushing problems, duels, and contests on
+              See who&apos;s crushing problems, duels, team battles, and contests on
               CodeGen4Future.
             </p>
           </div>
         </div>
 
         {loading ? (
-          <p className="page-muted">Loading leaderboard.</p>
+          <p className="page-muted">Loading leaderboard...</p>
         ) : users.length === 0 ? (
           <p className="page-muted">No data yet. Solve some problems!</p>
         ) : (
@@ -60,8 +67,10 @@ export default function LeaderboardPage() {
                   <th>User</th>
                   <th>Rating</th>
                   <th>Solved</th>
+                  <th>Accepted</th>
                   <th>Accuracy</th>
                   <th>Duels</th>
+                  <th>Team Battles</th>
                   <th>Contests</th>
                 </tr>
               </thead>
@@ -75,10 +84,26 @@ export default function LeaderboardPage() {
                   const losses = u.duelLosses || 0;
                   const contestsPlayed = u.contestsPlayed || 0;
                   const contestsWon = u.contestsWon || 0;
+                  const accepted = u.acceptedSubmissions || 0;
+
+                  const teamPlayed = u.teamBattlesPlayed || 0;
+                  const teamWon = u.teamBattlesWon || 0;
+                  const teamLost = u.teamBattlesLost || 0;
 
                   return (
-                    <tr key={u._id || u.username}>
-                      <td>{i + 1}</td>
+                    <tr
+                      key={u._id || u.username}
+                      className={
+                        i === 0
+                          ? "leaderboard-row top-1"
+                          : i === 1
+                          ? "leaderboard-row top-2"
+                          : i === 2
+                          ? "leaderboard-row top-3"
+                          : "leaderboard-row"
+                      }
+                    >
+                      <td>{renderRank(i)}</td>
                       <td>
                         <div className="user-cell">
                           <div className="avatar-circle">
@@ -94,24 +119,31 @@ export default function LeaderboardPage() {
                       </td>
                       <td>
                         <div className="solved-breakdown">
-                          <span className="chip chip-easy">
-                            E {easy}
-                          </span>
-                          <span className="chip chip-medium">
-                            M {med}
-                          </span>
-                          <span className="chip chip-hard">
-                            H {hard}
-                          </span>
+                          <span className="chip chip-easy">E {easy}</span>
+                          <span className="chip chip-medium">M {med}</span>
+                          <span className="chip chip-hard">H {hard}</span>
                           <span className="chip chip-neutral">
                             Total {totalSolved}
                           </span>
                         </div>
                       </td>
+                      <td>
+                        <span className="chip chip-secondary">
+                          {accepted}
+                        </span>
+                      </td>
                       <td>{formatAccuracy(u)}</td>
                       <td>
                         <span className="chip chip-secondary">
                           {wins}W / {losses}L
+                        </span>
+                      </td>
+                      <td>
+                        <span className="chip chip-secondary">
+                          {teamWon}W / {teamLost}L{" "}
+                          <span className="chip-small">
+                            ({teamPlayed} played)
+                          </span>
                         </span>
                       </td>
                       <td>
