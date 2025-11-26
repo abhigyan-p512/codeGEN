@@ -21,9 +21,15 @@ const Profile = () => {
     location: "",
   });
 
+  // month used for the calendar (first day of month)
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
   // ====== Fetch profile + stats ======
   useEffect(() => {
-    const hasToken = token || localStorage.getItem("token");
+    const hasToken = token || sessionStorage.getItem("token");
     if (!hasToken) {
       navigate("/login");
       return;
@@ -97,52 +103,7 @@ const Profile = () => {
     navigate("/submissions");
   };
 
-  // ====== Monthly heatmap (current month) ======
-  const buildMonthlyHeatmapData = () => {
-    const activity = stats?.activityByDate || [];
-    const activityMap = new Map(activity.map((d) => [d.date, d.count]));
-
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-    const weeks = [];
-    let week = [];
-
-    const startDay = start.getDay();
-    for (let i = 0; i < startDay; i++) {
-      week.push(null);
-    }
-
-    const dateToKey = (d) => d.toISOString().substring(0, 10);
-
-    let monthSubmissions = 0;
-    let monthActiveDays = 0;
-
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const key = dateToKey(d);
-      const count = activityMap.get(key) || 0;
-      if (count > 0) {
-        monthSubmissions += count;
-        monthActiveDays += 1;
-      }
-      week.push({ date: key, count });
-
-      if (week.length === 7) {
-        weeks.push(week);
-        week = [];
-      }
-    }
-
-    if (week.length > 0) {
-      while (week.length < 7) week.push(null);
-      weeks.push(week);
-    }
-
-    const monthName = start.toLocaleString("en-US", { month: "long" });
-    return { weeks, monthSubmissions, monthActiveDays, monthName };
-  };
-
+  // ====== Heatmap helpers ======
   const getCellColor = (count) => {
     if (!count || count <= 0) return "rgba(15,23,42,0.95)";
     if (count === 1) return "rgba(56,189,248,0.35)";
@@ -156,7 +117,116 @@ const Profile = () => {
     return "1px solid #0ea5e9";
   };
 
-  // ====== Loading / error states ======
+  // ====== Build calendar data + streak types ======
+  const buildMonthlyHeatmapData = (monthDate) => {
+    const activity = stats?.activityByDate || [];
+    const activityMap = new Map(activity.map((d) => [d.date, d.count]));
+
+    // all active days (count > 0), sorted
+    const activeDates = activity
+      .filter((d) => d.count > 0)
+      .map((d) => new Date(d.date))
+      .sort((a, b) => a - b);
+
+    // compute current streak from last active day backwards
+    const streakSet = new Set();
+    if (activeDates.length > 0) {
+      let idx = activeDates.length - 1;
+      let current = activeDates[idx];
+      const toKey = (d) => d.toISOString().substring(0, 10);
+
+      streakSet.add(toKey(current));
+      while (idx > 0) {
+        const prev = activeDates[idx - 1];
+        const diffDays = Math.round((current - prev) / 86400000);
+        if (diffDays === 1) {
+          streakSet.add(toKey(prev));
+          current = prev;
+          idx--;
+        } else break;
+      }
+    }
+
+    const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+
+    const weeks = [];
+    let week = [];
+
+    const startDay = start.getDay();
+    for (let i = 0; i < startDay; i++) week.push(null);
+
+    const dateToKey = (d) => d.toISOString().substring(0, 10);
+
+    let monthSubmissions = 0;
+    let monthActiveDays = 0;
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const cur = new Date(d);
+      const key = dateToKey(cur);
+      const count = activityMap.get(key) || 0;
+      const isInStreak = streakSet.has(key);
+
+      if (count > 0) {
+        monthSubmissions += count;
+        monthActiveDays += 1;
+      }
+
+      let streakType = null;
+      if (isInStreak) {
+        const prev = new Date(cur);
+        prev.setDate(cur.getDate() - 1);
+        const next = new Date(cur);
+        next.setDate(cur.getDate() + 1);
+
+        const prevIn = streakSet.has(dateToKey(prev));
+        const nextIn = streakSet.has(dateToKey(next));
+
+        if (prevIn && nextIn) streakType = "middle";
+        else if (!prevIn && nextIn) streakType = "start";
+        else if (prevIn && !nextIn) streakType = "end";
+        else streakType = "single";
+      }
+
+      week.push({ date: key, count, isInStreak, streakType });
+
+      if (week.length === 7) {
+        weeks.push(week);
+        week = [];
+      }
+    }
+
+    if (week.length > 0) {
+      while (week.length < 7) week.push(null);
+      weeks.push(week);
+    }
+
+    const monthName = start.toLocaleString("en-US", { month: "long" });
+    const yearLabel = start.getFullYear();
+    const monthYearLabel = `${monthName} ${yearLabel}`;
+
+    return { weeks, monthSubmissions, monthActiveDays, monthYearLabel };
+  };
+
+  const handlePrevMonth = () => {
+    setCalendarMonth((prev) => {
+      const d = new Date(prev);
+      d.setMonth(d.getMonth() - 1);
+      d.setDate(1);
+      return d;
+    });
+  };
+
+  const handleNextMonth = () => {
+    setCalendarMonth((prev) => {
+      const d = new Date(prev);
+      d.setMonth(d.getMonth() + 1);
+      d.setDate(1);
+      return d;
+    });
+  };
+
+  // ====== Loading / error ======
   if (loading) {
     return (
       <div
@@ -224,10 +294,8 @@ const Profile = () => {
   const totalSolved = profile.totalSolved || 0;
   const totalSubmissions = profile.totalSubmissions || 0;
 
-  const duelWins =
-    stats?.duelWins ?? profile.duelWins ?? 0;
-  const duelLosses =
-    stats?.duelLosses ?? profile.duelLosses ?? 0;
+  const duelWins = stats?.duelWins ?? profile.duelWins ?? 0;
+  const duelLosses = stats?.duelLosses ?? profile.duelLosses ?? 0;
 
   const teamBattlesPlayed = profile.teamBattlesPlayed || 0;
   const teamBattlesWon = profile.teamBattlesWon || 0;
@@ -250,8 +318,37 @@ const Profile = () => {
   const rating = profile.rating || stats?.rating || 1500;
   const displayName = profile.name || profile.username;
 
-  const { weeks, monthSubmissions, monthActiveDays, monthName } =
-    buildMonthlyHeatmapData();
+  const {
+    weeks,
+    monthSubmissions,
+    monthActiveDays,
+    monthYearLabel,
+  } = buildMonthlyHeatmapData(calendarMonth);
+
+  // streak glow animation + subtle fade-in
+  const streakAnimationStyles = `
+    @keyframes streakGlow {
+      from {
+        box-shadow: 0 0 0 rgba(248, 181, 0, 0.0);
+        transform: translateY(0);
+      }
+      to {
+        box-shadow: 0 0 18px rgba(248, 181, 0, 0.8);
+        transform: translateY(-1px);
+      }
+    }
+
+    @keyframes dayFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(3px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  `;
 
   // ====== UI ======
   return (
@@ -263,12 +360,14 @@ const Profile = () => {
         color: "#e5e7eb",
       }}
     >
+      <style>{streakAnimationStyles}</style>
+
       <div
         style={{
           maxWidth: 1040,
           margin: "0 auto",
           background:
-            "radial-gradient(circle at top, rgba(56,189,248,0.12), transparent 65%), #020617",
+            "radial-gradient(circle at top, rgba(56,189,248,0.12), transparent 60%), #020617",
           borderRadius: 28,
           padding: 24,
           border: "1px solid #111827",
@@ -297,7 +396,7 @@ const Profile = () => {
               fontWeight: 700,
               fontSize: 24,
               color: "#020617",
-              boxShadow: "0 14px 32px rgba(0,0,0,0.7)",
+              boxShadow: "0 16px 40px rgba(0,0,0,0.85)",
             }}
           >
             {profile.username?.slice(0, 2).toUpperCase()}
@@ -367,7 +466,7 @@ const Profile = () => {
                 border: "1px solid rgba(96,165,250,0.7)",
                 background:
                   "radial-gradient(circle at top, rgba(37,99,235,0.35), transparent 60%), #020617",
-                minWidth: 140,
+                minWidth: 170,
               }}
             >
               <div
@@ -389,6 +488,16 @@ const Profile = () => {
               >
                 {rating}
               </div>
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: "#9ca3af",
+                }}
+              >
+                Current streak:{" "}
+                <span style={{ color: "#facc15" }}>{currentStreak}🔥</span>
+              </div>
             </div>
 
             <button
@@ -400,7 +509,7 @@ const Profile = () => {
                 borderRadius: 999,
                 border: "1px solid #4b5563",
                 background:
-                  "linear-gradient(135deg, rgba(99,102,241,0.3), rgba(30,64,175,0.7))",
+                  "linear-gradient(135deg, rgba(99,102,241,0.4), rgba(30,64,175,0.9))",
                 color: "#e5e7eb",
                 cursor: "pointer",
               }}
@@ -574,7 +683,7 @@ const Profile = () => {
             <div style={{ fontSize: 20, fontWeight: 600 }}>{totalSolved}</div>
           </div>
 
-          {/* Submissions + View button */}
+          {/* Submissions */}
           <div
             style={{
               padding: 16,
@@ -617,7 +726,7 @@ const Profile = () => {
             </button>
           </div>
 
-          {/* Duel record */}
+          {/* Duels */}
           <div
             style={{
               padding: 16,
@@ -656,7 +765,7 @@ const Profile = () => {
                 color: "#9ca3af",
               }}
             >
-              Wins: {teamBattlesWon} &nbsp;·&nbsp; Losses: {teamBattlesLost}
+              Wins: {teamBattlesWon} · Losses: {teamBattlesLost}
             </div>
           </div>
         </div>
@@ -719,126 +828,266 @@ const Profile = () => {
           </div>
         </div>
 
-        {/* Monthly submissions calendar */}
-        <div
-          style={{
-            marginTop: 28,
-            paddingTop: 16,
-            borderTop: "1px solid rgba(31,41,55,0.9)",
-          }}
-        >
+        {/* ===== Streak Calendar (joined ribbon, more aesthetic) ===== */}
+        <div style={{ marginTop: 32 }}>
+          {/* Calendar heading row */}
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "baseline",
-              marginBottom: 8,
+              alignItems: "center",
+              marginBottom: 12,
             }}
           >
-            <div style={{ fontSize: 14 }}>
-              <span style={{ fontWeight: 600 }}>
-                {monthSubmissions} submissions
-              </span>{" "}
-              <span style={{ color: "#9ca3af" }}>in {monthName}</span>
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 2,
+                }}
+              >
+                <span style={{ fontSize: 14, fontWeight: 600 }}>
+                  Streak calendar
+                </span>
+                <span style={{ fontSize: 16 }}>🔥</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                <span style={{ fontWeight: 600 }}>{monthSubmissions}</span>{" "}
+                submissions ·{" "}
+                <span style={{ fontWeight: 600 }}>{monthActiveDays}</span> active
+                days · Max streak{" "}
+                <span style={{ color: "#facc15" }}>{longestStreak}</span>
+              </div>
             </div>
+
+            {/* Month switcher */}
             <div
               style={{
-                fontSize: 12,
-                color: "#9ca3af",
                 display: "flex",
-                gap: 16,
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                color: "#cbd5e1",
               }}
             >
-              <span>Active days: {monthActiveDays}</span>
-              <span>Max streak: {longestStreak}</span>
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  border: "1px solid #1f2937",
+                  background:
+                    "radial-gradient(circle at top, rgba(15,23,42,1), rgba(15,23,42,1))",
+                  color: "#e5e7eb",
+                  cursor: "pointer",
+                }}
+              >
+                ‹
+              </button>
+              <span
+                style={{
+                  minWidth: 130,
+                  textAlign: "center",
+                  fontWeight: 500,
+                }}
+              >
+                {monthYearLabel}
+              </span>
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  border: "1px solid #1f2937",
+                  background:
+                    "radial-gradient(circle at top, rgba(15,23,42,1), rgba(15,23,42,1))",
+                  color: "#e5e7eb",
+                  cursor: "pointer",
+                }}
+              >
+                ›
+              </button>
             </div>
           </div>
 
+          {/* Calendar card */}
           <div
             style={{
-              padding: 12,
-              borderRadius: 18,
-              background: "rgba(15,23,42,0.96)",
+              padding: 18,
+              borderRadius: 22,
+              background:
+                "radial-gradient(circle at top, rgba(15,23,42,1), rgba(15,23,42,0.96))",
               border: "1px solid #111827",
+              boxShadow: "0 16px 30px rgba(0,0,0,0.55)",
             }}
           >
+            {/* Weekday labels */}
             <div
               style={{
-                display: "flex",
-                gap: 4,
-                overflowX: "auto",
-                paddingBottom: 6,
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                fontSize: 11,
+                textAlign: "center",
+                marginBottom: 8,
+                color: "#64748b",
               }}
             >
-              {weeks.map((week, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "grid",
-                    gridTemplateRows: "repeat(7, 10px)",
-                    gap: 4,
-                  }}
-                >
-                  {week.map((cell, j) => (
-                    <div
-                      key={j}
-                      title={
-                        cell && cell.count > 0
-                          ? `${cell.count} submission${
-                              cell.count === 1 ? "" : "s"
-                            } on ${cell.date}`
-                          : ""
-                      }
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 3,
-                        background: cell
-                          ? getCellColor(cell.count)
-                          : "transparent",
-                        border: cell
-                          ? getCellBorder(cell.count)
-                          : "1px solid transparent",
-                      }}
-                    />
-                  ))}
-                </div>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                <span key={d}>{d}</span>
               ))}
             </div>
 
             <div
               style={{
-                marginTop: 6,
-                fontSize: 10,
-                color: "#9ca3af",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+                height: 1,
+                width: "100%",
+                background:
+                  "linear-gradient(to right, transparent, #1f2937, transparent)",
+                marginBottom: 8,
+              }}
+            />
+
+            {/* Calendar grid with continuous streak ribbon */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                columnGap: 0,
+                rowGap: 10,
               }}
             >
-              <span>{monthName}</span>
-              <div
-                style={{
+              {weeks.flat().map((cell, i) => {
+                const todayKey = new Date().toISOString().substring(0, 10);
+                const isToday = cell && cell.date === todayKey;
+
+                const outerStyle = {
+                  width: "100%",
+                  height: 38,
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <span style={{ marginRight: 4 }}>Less</span>
-                {[0, 1, 3, 6, 10].map((c, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 3,
-                      background: getCellColor(c),
-                      border: getCellBorder(c),
-                    }}
-                  />
-                ))}
-                <span style={{ marginLeft: 4 }}>More</span>
-              </div>
+                  justifyContent: "center",
+                  animation: "dayFadeIn 0.25s ease-out",
+                };
+
+                let badgeStyle = {
+                  minWidth: 26,
+                  height: 26,
+                  padding: "0 10px",
+                  borderRadius: 999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  transition:
+                    "transform 0.15s ease-out, box-shadow 0.15s ease-out",
+                };
+
+                let showBadge = !!cell;
+
+                if (!cell) {
+                  showBadge = false;
+                } else if (cell.streakType) {
+                  // current streak -> orange ribbon
+                  badgeStyle.background =
+                    "linear-gradient(135deg, #f59e0b, #fbbf24)";
+                  badgeStyle.color = "#111827";
+                  badgeStyle.boxShadow =
+                    "0 5px 14px rgba(245,158,11,0.68)";
+                  badgeStyle.animation =
+                    "streakGlow 1.2s ease-in-out infinite alternate";
+
+                  // make ribbon continuous: full cell width
+                  badgeStyle.width = "100%";
+                  badgeStyle.minWidth = "unset";
+                  badgeStyle.padding = "0 10px";
+
+                  if (cell.streakType === "start") {
+                    badgeStyle.borderRadius = "999px 0 0 999px";
+                  } else if (cell.streakType === "end") {
+                    badgeStyle.borderRadius = "0 999px 999px 0";
+                  } else if (cell.streakType === "middle") {
+                    badgeStyle.borderRadius = "0";
+                  } else {
+                    // single-day streak
+                    badgeStyle.borderRadius = "999px";
+                  }
+
+                  if (isToday) {
+                    badgeStyle.boxShadow =
+                      "0 0 18px rgba(251,191,36,0.95)";
+                  }
+                } else if (cell.count > 0) {
+                  // active but not in current streak
+                  badgeStyle.background =
+                    "radial-gradient(circle, rgba(245,158,11,0.26), transparent 70%)";
+                  badgeStyle.border = "1px solid rgba(245,158,11,0.65)";
+                  badgeStyle.color = "#e5e7eb";
+                } else {
+                  // inactive
+                  badgeStyle.background = "transparent";
+                  badgeStyle.color = "#4b5563";
+                }
+
+                if (isToday && !cell?.streakType) {
+                  badgeStyle.border = "1px solid #38bdf8";
+                  badgeStyle.boxShadow =
+                    "0 0 12px rgba(56,189,248,0.65)";
+                }
+
+                return (
+                  <div key={i} style={outerStyle}>
+                    {showBadge && (
+                      <div
+                        title={
+                          cell && cell.count > 0
+                            ? `${cell.count} submission${
+                                cell.count === 1 ? "" : "s"
+                              } on ${cell.date}`
+                            : ""
+                        }
+                        style={badgeStyle}
+                      >
+                        {cell ? new Date(cell.date).getDate() : ""}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Heat legend */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 11,
+                marginTop: 12,
+                color: "#94a3b8",
+              }}
+            >
+              <span>Less</span>
+              {[0, 1, 3, 6, 10].map((c, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    width: 16,
+                    height: 10,
+                    borderRadius: 999,
+                    background: getCellColor(c),
+                    border: getCellBorder(c),
+                  }}
+                />
+              ))}
+              <span>More</span>
             </div>
           </div>
         </div>
