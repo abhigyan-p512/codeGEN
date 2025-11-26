@@ -14,21 +14,29 @@ const router = express.Router();
 router.post("/", authMiddleware, async (req, res) => {
   try {
     const { name, memberIds = [] } = req.body;
-    const captainId = req.user.userId;
+    // auth middleware sets req.user.id
+    const captainId = req.user.id;
 
     if (!name) {
       return res.status(400).json({ message: "Team name is required" });
     }
 
+    // Normalize memberIds to strings
+    const normalizedMemberIds = Array.isArray(memberIds)
+      ? memberIds
+          .map((id) => (id ? id.toString() : null))
+          .filter(Boolean)
+      : [];
+
     // captain + optional memberIds, make them unique
     const uniqueMembers = Array.from(
-      new Set([captainId.toString(), ...memberIds.map(String)])
+      new Set([captainId.toString(), ...normalizedMemberIds])
     );
 
     const team = await Team.create({
       name,
       captain: captainId,
-      members: uniqueMembers,
+      members: uniqueMembers, // mongoose will cast these strings to ObjectId
     });
 
     res.status(201).json(team);
@@ -44,8 +52,10 @@ router.post("/", authMiddleware, async (req, res) => {
  */
 router.get("/mine", authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
+
     const teams = await Team.find({
-      members: req.user.userId,
+      members: userId,
     }).populate("members", "username");
 
     res.json(teams);
@@ -80,7 +90,7 @@ router.post("/:id/join", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Team not found" });
     }
 
-    const userId = req.user.userId.toString();
+    const userId = req.user.id.toString();
 
     // already a member?
     if (team.members.some((m) => m.toString() === userId)) {

@@ -70,6 +70,8 @@ function ProblemPage() {
   const [judgeDetails, setJudgeDetails] = useState(null); // { totalTests, wrongTest, expected, actual }
 
   const contestId = location.state?.contestId || null;
+  // ✅ NEW: battleId if we came from a Team Battle Room
+  const battleId = location.state?.battleId || null;
 
   // Load problem by slug
   useEffect(() => {
@@ -139,12 +141,23 @@ function ProblemPage() {
       setSubmitMessage("");
       setJudgeDetails(null);
 
-      const res = await api.post("/submissions", {
+      // ✅ Build payload and include contestId / battleId if present
+      const payload = {
         problemId: problem._id,
         code,
         language,
-        contestId: contestId || undefined,
-      });
+      };
+
+      if (contestId) {
+        payload.contestId = contestId;
+      }
+      if (battleId) {
+        payload.battleId = battleId;
+        // optional debug:
+        // console.log("Submitting with battleId", battleId);
+      }
+
+      const res = await api.post("/submissions", payload);
 
       const data = res.data || {};
       const finalStatus = data.status || "Submitted";

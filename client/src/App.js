@@ -1,4 +1,3 @@
-// src/App.js
 import React from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 
@@ -17,7 +16,10 @@ import CreateContestPage from "./pages/CreateContestPage";
 
 import DuelPage from "./pages/DuelPage";
 import DuelRoomPage from "./pages/DuelRoomPage";
+
+import TeamsPage from "./pages/TeamsPage";
 import TeamBattlePage from "./pages/TeamBattlePage";
+import TeamBattleRoomPage from "./pages/TeamBattleRoomPage";
 
 import { useAuth } from "./context/AuthContext";
 import LeaderboardPage from "./pages/LeaderboardPage";
@@ -29,12 +31,10 @@ function App() {
   const isLanding = location.pathname === "/";
   const isSimpleEditor = location.pathname === "/simple-editor";
 
-  // helper to highlight active nav link
   const navLinkClass = (path) => {
     const current = location.pathname;
     const isActive =
-      current === path ||
-      (path !== "/" && current.startsWith(path));
+      current === path || (path !== "/" && current.startsWith(path));
     return "nav-link" + (isActive ? " active" : "");
   };
 
@@ -45,7 +45,6 @@ function App() {
         fontFamily: "sans-serif",
       }}
     >
-      {/* Top navbar (hidden on landing) */}
       {!isLanding && (
         <nav className="navbar-main">
           <div className="navbar-left">
@@ -55,7 +54,6 @@ function App() {
           </div>
 
           <div className="navbar-right">
-            {/* Hide some nav items on simple editor */}
             {!isSimpleEditor && (
               <>
                 <Link to="/problems" className={navLinkClass("/problems")}>
@@ -68,6 +66,12 @@ function App() {
                   1v1 Duel
                 </Link>
                 <Link to="/teams" className={navLinkClass("/teams")}>
+                  Teams
+                </Link>
+                <Link
+                  to="/team-battle"
+                  className={navLinkClass("/team-battle")}
+                >
                   Team Battle
                 </Link>
                 <Link
@@ -112,26 +116,25 @@ function App() {
       )}
 
       <Routes>
-        {/* Landing page */}
+        {/* Landing */}
         <Route path="/" element={<LandingPage />} />
 
-        {/* Problems list & details */}
+        {/* Problems */}
         <Route path="/problems" element={<Home />} />
         <Route path="/problems/:slug" element={<ProblemPage />} />
-        {/* Problem opened from contest */}
         <Route
           path="/contests/:contestId/problems/:slug"
           element={<ProblemPage />}
         />
 
-        {/* Simple standalone editor */}
+        {/* Simple editor */}
         <Route path="/simple-editor" element={<SimpleCodeEditor />} />
 
         {/* Auth */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* User pages */}
+        {/* User */}
         <Route path="/submissions" element={<MySubmissions />} />
         <Route path="/profile" element={<Profile />} />
 
@@ -144,10 +147,13 @@ function App() {
         <Route path="/duel" element={<DuelPage />} />
         <Route path="/duel-room/:roomId" element={<DuelRoomPage />} />
 
-        {/* Team Battle */}
-        <Route path="/teams" element={<TeamBattlePage />} />
-        
-        <Route path="/leaderboard" element={<LeaderboardPage />} />   
+        {/* Teams & Team Battle */}
+        <Route path="/teams" element={<TeamsPage />} />
+        <Route path="/team-battle" element={<TeamBattlePage />} />
+        <Route path="/team-battles/:battleId" element={<TeamBattleRoomPage />} />
+
+        {/* Leaderboard */}
+        <Route path="/leaderboard" element={<LeaderboardPage />} />
       </Routes>
     </div>
   );

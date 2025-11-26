@@ -183,7 +183,15 @@ module.exports = function initSocket(io) {
   io.on("connection", (socket) => {
     console.log("socket connected", socket.id);
 
-    // ---------- JOIN ROOM ----------
+    // ✅ TEAM BATTLE: join a team-battle room by battleId for live scoreboard
+    socket.on("join_team_battle", ({ battleId } = {}) => {
+      if (!battleId) return;
+      const roomId = battleId.toString();
+      socket.join(roomId);
+      console.log("join_team_battle", { socketId: socket.id, roomId });
+    });
+
+    // ---------- JOIN ROOM (DUEL) ----------
     socket.on("join_duel", ({ duelId, roomId, userId } = {}) => {
       const id = duelId || roomId;
       if (!id) {

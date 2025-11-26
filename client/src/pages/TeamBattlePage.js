@@ -1,10 +1,8 @@
 // src/pages/TeamBattlePage.js
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext"; // ✅ fixed path
 import { useNavigate, useLocation } from "react-router-dom";
-
-
 
 const API_URL = "http://localhost:5000";
 
@@ -13,12 +11,11 @@ function TeamBattlePage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-useEffect(() => {
-  if (!user) {
-    navigate("/login", { state: { from: location.pathname } });
-  }
-}, [user, navigate, location.pathname]);
-
+  useEffect(() => {
+    if (!user) {
+      navigate("/login", { state: { from: location.pathname } });
+    }
+  }, [user, navigate, location.pathname]);
 
   const [teams, setTeams] = useState([]);
   const [problems, setProblems] = useState([]);
@@ -104,7 +101,7 @@ useEffect(() => {
       setCreating(true);
 
       const res = await axios.post(
-        `${API_URL}/matches/team`,
+        `${API_URL}/team-battles`,
         {
           teamAId,
           teamBId,
@@ -115,8 +112,8 @@ useEffect(() => {
       );
 
       setMessage("Team battle created! Redirecting...");
-      const contestId = res.data.contest._id;
-      navigate(`/contests/${contestId}`);
+      const { battleId } = res.data;
+      navigate(`/team-battles/${battleId}`);
     } catch (err) {
       console.error("Create team match error:", err);
       setMessage(
@@ -178,7 +175,7 @@ useEffect(() => {
             <div className="team-select-column">
               <label className="auth-label">Team B</label>
               {loadingTeams ? (
-                <p className="page-muted">Loading teams...</p>
+                <p className="page-muted">Loading teams.</p>
               ) : (
                 <select
                   value={teamBId}

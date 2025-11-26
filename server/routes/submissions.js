@@ -4,6 +4,9 @@ const axios = require("axios");
 const Submission = require("../models/Submission");
 const Problem = require("../models/Problem");
 const auth = require("../middleware/authMiddleware");
+const {
+  handleTeamBattleSubmission,
+} = require("../services/teamBattleScoring");
 
 const router = express.Router();
 
@@ -25,11 +28,11 @@ function mapLanguage(language) {
 /**
  * Create a submission with auto-judge on example tests
  * POST /submissions
- * body: { problemId, code, language, contestId? }
+ * body: { problemId, code, language, contestId?, battleId? }
  */
 router.post("/", auth, async (req, res) => {
   try {
-    const { problemId, code, language, contestId } = req.body;
+    const { problemId, code, language, contestId, battleId } = req.body;
 
     if (!problemId || !code || !language) {
       return res.status(400).json({
@@ -55,6 +58,31 @@ router.post("/", auth, async (req, res) => {
         status: "Submitted",
         contest: contestId || null,
       });
+
+      // optional: treat as WA in team battle
+      if (battleId) {
+        try {
+          const updatedBattle = await handleTeamBattleSubmission({
+            battleId,
+            userId: req.user.id,
+            problemId,
+            verdict: "WA",
+            submittedAt: new Date(),
+          });
+          if (updatedBattle && global.io) {
+            global.io
+              .to(updatedBattle._id.toString())
+              .emit("team-battle:score-update", {
+                battleId: updatedBattle._id.toString(),
+                teamA: updatedBattle.teamA,
+                teamB: updatedBattle.teamB,
+                participants: updatedBattle.participants,
+              });
+          }
+        } catch (e) {
+          console.error("Team battle scoring (no tests) error:", e);
+        }
+      }
 
       return res.json({
         ok: true,
@@ -131,6 +159,33 @@ router.post("/", auth, async (req, res) => {
       contest: contestId || null,
       details,
     });
+
+    // ✅ TEAM BATTLE SUM-OF-MEMBERS LOGIC
+    if (battleId) {
+      try {
+        const verdict = finalStatus === "Accepted" ? "AC" : "WA";
+        const updatedBattle = await handleTeamBattleSubmission({
+          battleId,
+          userId: req.user.id,
+          problemId,
+          verdict,
+          submittedAt: new Date(),
+        });
+
+        if (updatedBattle && global.io) {
+          global.io
+            .to(updatedBattle._id.toString())
+            .emit("team-battle:score-update", {
+              battleId: updatedBattle._id.toString(),
+              teamA: updatedBattle.teamA,
+              teamB: updatedBattle.teamB,
+              participants: updatedBattle.participants,
+            });
+        }
+      } catch (err) {
+        console.error("Team battle scoring error:", err);
+      }
+    }
 
     return res.json({
       ok: true,

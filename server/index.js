@@ -26,7 +26,9 @@ function safeRequire(path, label) {
     console.log(`Loaded routes: ${label} (${path})`);
     return mod;
   } catch (err) {
-    console.warn(`Warning: could not load ${label} from ${path}: ${err.message}`);
+    console.warn(
+      `Warning: could not load ${label} from ${path}: ${err.message}`
+    );
     if (err.stack) {
       console.warn(err.stack.split("\n").slice(0, 6).join("\n"));
     }
@@ -43,6 +45,8 @@ const contestRoutes = safeRequire("./routes/contests", "contests");
 const teamRoutes = safeRequire("./routes/teams", "teams");
 const duelRoutes = safeRequire("./routes/duels", "duels");
 const userRoutes = safeRequire("./routes/users", "users");
+// ✅ NEW: team battles
+const teamBattleRoutes = safeRequire("./routes/teamBattles", "teamBattles");
 
 // Mount only if route module exists
 if (authRoutes) app.use("/auth", authRoutes);
@@ -53,31 +57,37 @@ if (contestRoutes) app.use("/contests", contestRoutes);
 if (teamRoutes) app.use("/teams", teamRoutes);
 if (duelRoutes) app.use("/duels", duelRoutes);
 if (userRoutes) app.use("/users", userRoutes);
+// ✅ mount team battles
+if (teamBattleRoutes) app.use("/team-battles", teamBattleRoutes);
 
-// Simple test route
 app.get("/", (req, res) => {
   res.send("API is running");
 });
 
 // ---------- Mongo + server startup ----------
-const preferredMongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/leetclone";
+const preferredMongoUri =
+  process.env.MONGO_URI || "mongodb://localhost:27017/leetclone";
 
 async function startServer() {
   const http = require("http");
   const server = http.createServer(app);
 
-  // flexible connect with fallback and retries
   async function connectWithRetry(uri, retries = 2, delayMs = 2000) {
     for (let attempt = 1; attempt <= retries + 1; attempt++) {
       try {
-        console.log(`Attempting MongoDB connect (attempt ${attempt}) -> ${uri.includes("mongodb.net") ? "(Atlas SRV)" : uri}`);
-        await mongoose.connect(uri, {
-          // leave options empty for modern driver, adjust if you need
-        });
+        console.log(
+          `Attempting MongoDB connect (attempt ${attempt}) -> ${
+            uri.includes("mongodb.net") ? "(Atlas SRV)" : uri
+          }`
+        );
+        await mongoose.connect(uri, {});
         console.log("MongoDB connected");
         return;
       } catch (err) {
-        console.error(`Mongo connection attempt ${attempt} failed:`, err.message);
+        console.error(
+          `Mongo connection attempt ${attempt} failed:`,
+          err.message
+        );
         if (attempt <= retries) {
           console.log(`Retrying in ${delayMs} ms...`);
           await new Promise((r) => setTimeout(r, delayMs));
@@ -89,20 +99,25 @@ async function startServer() {
   }
 
   try {
-    // Try preferred URI (likely Atlas). If it fails with DNS/SRV issues, try local fallback.
     try {
       await connectWithRetry(preferredMongoUri, 2, 2000);
     } catch (firstErr) {
       console.warn("Primary MongoDB URI failed.");
-      // If the primary looks like an Atlas SRV and error is DNS-related, try local fallback
-      const looksLikeAtlas = /mongodb\+srv|mongodb\.net/i.test(preferredMongoUri);
+      const looksLikeAtlas = /mongodb\+srv|mongodb\.net/i.test(
+        preferredMongoUri
+      );
       if (looksLikeAtlas) {
-        console.warn("Detected Atlas SRV URI. Attempting fallback to local MongoDB (mongodb://localhost:27017/leetclone).");
+        console.warn(
+          "Detected Atlas SRV URI. Attempting fallback to local MongoDB (mongodb://localhost:27017/leetclone)."
+        );
         try {
           await connectWithRetry("mongodb://localhost:27017/leetclone", 1, 1000);
         } catch (fallbackErr) {
-          console.error("Fallback to local MongoDB failed:", fallbackErr.message);
-          throw firstErr; // show original failure
+          console.error(
+            "Fallback to local MongoDB failed:",
+            fallbackErr.message
+          );
+          throw firstErr;
         }
       } else {
         throw firstErr;
@@ -121,12 +136,14 @@ async function startServer() {
         },
       });
 
-      // 👇 CHANGED HERE
       const initSockets = require("./socket");
       if (typeof initSockets === "function") {
         initSockets(io);
         console.log("Socket handlers initialized");
       }
+
+      // ✅ make io available everywhere (submissions → team battle scoring)
+      global.io = io;
     } catch (err) {
       console.warn("socket.io not available; real-time disabled.");
     }
@@ -142,5 +159,3 @@ async function startServer() {
 }
 
 startServer();
-
-
