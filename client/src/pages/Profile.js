@@ -95,24 +95,42 @@ const Profile = () => {
     navigate("/submissions");
   };
 
-  // ====== MONTHLY CALENDAR (CURRENT MONTH ONLY) ======
-  const buildMonthlyHeatmapData = () => {
+  // ====== MONTHLY STREAK CALENDAR (CURRENT MONTH) ======
+  const buildMonthlyCalendarData = () => {
     const activity = stats?.activityByDate || [];
     const activityMap = new Map(activity.map((d) => [d.date, d.count]));
 
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-based
+
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+
+    const dateToKey = (d) => d.toISOString().substring(0, 10);
+
+    // figure out which days are part of the *current* streak
+    const streakDatesSet = new Set();
+    let cursor = new Date(now);
+
+    while (cursor >= start) {
+      const key = dateToKey(cursor);
+      const count = activityMap.get(key) || 0;
+      if (count > 0) {
+        streakDatesSet.add(key);
+        cursor.setDate(cursor.getDate() - 1);
+      } else {
+        break;
+      }
+    }
 
     const weeks = [];
     let week = [];
 
-    const startDay = start.getDay();
-    for (let i = 0; i < startDay; i++) {
+    const startOffset = (start.getDay() + 7) % 7; // Sunday=0..Saturday=6
+    for (let i = 0; i < startOffset; i++) {
       week.push(null);
     }
-
-    const dateToKey = (d) => d.toISOString().substring(0, 10);
 
     let monthSubmissions = 0;
     let monthActiveDays = 0;
@@ -120,11 +138,19 @@ const Profile = () => {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const key = dateToKey(d);
       const count = activityMap.get(key) || 0;
+      const inCurrentStreak = streakDatesSet.has(key);
+
       if (count > 0) {
         monthSubmissions += count;
         monthActiveDays += 1;
       }
-      week.push({ date: key, count });
+
+      week.push({
+        date: key,
+        dayNumber: d.getDate(),
+        count,
+        inCurrentStreak,
+      });
 
       if (week.length === 7) {
         weeks.push(week);
@@ -138,21 +164,14 @@ const Profile = () => {
     }
 
     const monthName = start.toLocaleString("en-US", { month: "long" });
+    const monthYearLabel = `${monthName} ${year}`;
 
-    return { weeks, monthSubmissions, monthActiveDays, monthName };
-  };
-
-  const getCellColor = (count) => {
-    if (!count || count <= 0) return "rgba(15,23,42,0.95)";
-    if (count === 1) return "rgba(56,189,248,0.35)";
-    if (count <= 3) return "rgba(56,189,248,0.6)";
-    if (count <= 6) return "rgba(56,189,248,0.85)";
-    return "rgba(56,189,248,1)";
-  };
-
-  const getCellBorder = (count) => {
-    if (!count || count <= 0) return "1px solid #020617";
-    return "1px solid #0ea5e9";
+    return {
+      weeks,
+      monthSubmissions,
+      monthActiveDays,
+      monthYearLabel,
+    };
   };
 
   if (loading) {
@@ -242,7 +261,6 @@ const Profile = () => {
   const computeRating = () => {
     const base = 1500;
 
-    // tune these weights however you like
     const solvedWeight = 8; // points per solved problem
     const duelWinPoints = 25;
     const duelLossPoints = -15;
@@ -257,20 +275,20 @@ const Profile = () => {
 
     let rating = base + solvedScore + duelScore + streakScore + accuracyScore;
 
-    // clamp between 800 and 3000
     rating = Math.max(800, Math.min(3000, rating));
 
     return rating;
   };
 
-  // if backend already stores rating, you can prefer that:
-  // const rating = profile.rating ?? computeRating();
   const rating = computeRating();
-
   const displayName = profile.name || profile.username;
 
-  const { weeks, monthSubmissions, monthActiveDays, monthName } =
-    buildMonthlyHeatmapData();
+  const {
+    weeks,
+    monthSubmissions,
+    monthActiveDays,
+    monthYearLabel,
+  } = buildMonthlyCalendarData();
 
   // ---------- UI ----------
   return (
@@ -740,7 +758,7 @@ const Profile = () => {
           </div>
         </div>
 
-        {/* Monthly submissions calendar */}
+        {/* Monthly streak calendar */}
         <div
           style={{
             marginTop: 28,
@@ -760,7 +778,7 @@ const Profile = () => {
               <span style={{ fontWeight: 600 }}>
                 {monthSubmissions} submissions
               </span>{" "}
-              <span style={{ color: "#9ca3af" }}>in {monthName}</span>
+              <span style={{ color: "#9ca3af" }}>this month</span>
             </div>
             <div
               style={{
@@ -768,97 +786,211 @@ const Profile = () => {
                 color: "#9ca3af",
                 display: "flex",
                 gap: 16,
+                alignItems: "center",
               }}
             >
               <span>Active days: {monthActiveDays}</span>
               <span>Max streak: {longestStreak}</span>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(248,181,0,0.7)",
+                  background:
+                    "radial-gradient(circle at top, rgba(248,181,0,0.28), transparent 60%)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span style={{ fontSize: 12 }}>🔥</span>
+                <span style={{ fontSize: 11 }}>
+                  {currentStreak}-day streak
+                </span>
+              </span>
             </div>
           </div>
 
           <div
             style={{
-              padding: 12,
-              borderRadius: 18,
-              background: "rgba(15,23,42,0.96)",
+              padding: 16,
+              borderRadius: 22,
+              background: "rgba(9,15,32,0.98)",
               border: "1px solid #111827",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.7)",
             }}
           >
+            {/* Month header */}
             <div
               style={{
                 display: "flex",
-                gap: 4,
-                overflowX: "auto",
-                paddingBottom: 6,
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
               }}
             >
-              {weeks.map((week, i) => (
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  letterSpacing: 0.2,
+                }}
+              >
+                {monthYearLabel}
+              </div>
+            </div>
+
+            {/* Weekday labels */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                gap: 6,
+                fontSize: 11,
+                color: "#6b7280",
+                marginBottom: 8,
+                textTransform: "uppercase",
+              }}
+            >
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
                 <div
-                  key={i}
+                  key={d}
                   style={{
-                    display: "grid",
-                    gridTemplateRows: "repeat(7, 10px)",
-                    gap: 4,
+                    textAlign: "center",
+                    letterSpacing: 0.06,
                   }}
                 >
-                  {week.map((cell, j) => (
-                    <div
-                      key={j}
-                      title={
-                        cell && cell.count > 0
-                          ? `${cell.count} submission${
-                              cell.count === 1 ? "" : "s"
-                            } on ${cell.date}`
-                          : ""
-                      }
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 3,
-                        background: cell
-                          ? getCellColor(cell.count)
-                          : "transparent",
-                        border: cell
-                          ? getCellBorder(cell.count)
-                          : "1px solid transparent",
-                      }}
-                    />
-                  ))}
+                  {d}
                 </div>
               ))}
             </div>
 
+            {/* Calendar grid */}
             <div
               style={{
-                marginTop: 6,
-                fontSize: 10,
+                display: "grid",
+                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                gap: 6,
+                fontSize: 12,
+              }}
+            >
+              {weeks.map((week, wi) =>
+                week.map((cell, ci) => {
+                  if (!cell) {
+                    return (
+                      <div
+                        key={`${wi}-${ci}`}
+                        style={{
+                          height: 32,
+                          borderRadius: 10,
+                          border: "1px solid transparent",
+                        }}
+                      />
+                    );
+                  }
+
+                  const isActive = cell.count > 0;
+                  const inCurrentStreak = cell.inCurrentStreak;
+
+                  let background = "#020617";
+                  let border = "1px solid #0f172a";
+                  let textColor = "#9ca3af";
+                  let boxShadow = "none";
+
+                  if (isActive) {
+                    background = "rgba(37,99,235,0.28)";
+                    border = "1px solid rgba(59,130,246,0.9)";
+                    textColor = "#e5e7eb";
+                  }
+
+                  if (inCurrentStreak) {
+                    background =
+                      "linear-gradient(135deg, rgba(248,181,0,0.9), rgba(245,158,11,0.75))";
+                    border = "1px solid rgba(251,191,36,1)";
+                    textColor = "#111827";
+                    boxShadow = "0 0 0 1px rgba(250,204,21,0.4)";
+                  }
+
+                  return (
+                    <div
+                      key={`${wi}-${ci}`}
+                      title={
+                        isActive
+                          ? `${cell.count} submission${
+                              cell.count === 1 ? "" : "s"
+                            } on ${cell.date}`
+                          : cell.date
+                      }
+                      style={{
+                        height: 32,
+                        borderRadius: 10,
+                        background,
+                        border,
+                        boxShadow,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: isActive ? 600 : 400,
+                      }}
+                    >
+                      <span style={{ color: textColor }}>
+                        {cell.dayNumber}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Legend */}
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 11,
                 color: "#9ca3af",
                 display: "flex",
-                justifyContent: "space-between",
+                gap: 14,
+                justifyContent: "flex-end",
                 alignItems: "center",
               }}
             >
-              <span>{monthName}</span>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <span style={{ marginRight: 4 }}>Less</span>
-                {[0, 1, 3, 6, 10].map((c, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 3,
-                      background: getCellColor(c),
-                      border: getCellBorder(c),
-                    }}
-                  />
-                ))}
-                <span style={{ marginLeft: 4 }}>More</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 4,
+                    border: "1px solid #1f2937",
+                    background: "#020617",
+                  }}
+                />
+                <span>Inactive</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 4,
+                    border: "1px solid rgba(59,130,246,0.9)",
+                    background: "rgba(37,99,235,0.45)",
+                  }}
+                />
+                <span>Active day</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 4,
+                    border: "1px solid rgba(251,191,36,1)",
+                    background:
+                      "linear-gradient(135deg, rgba(248,181,0,0.9), rgba(245,158,11,0.75))",
+                  }}
+                />
+                <span>Current streak</span>
               </div>
             </div>
           </div>
