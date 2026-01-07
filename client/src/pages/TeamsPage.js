@@ -14,7 +14,6 @@ function TeamsPage() {
   const [loadingMyTeams, setLoadingMyTeams] = useState(true);
 
   const [teamName, setTeamName] = useState("");
-  const [memberIds, setMemberIds] = useState("");
   const [joinTeamId, setJoinTeamId] = useState("");
 
   const [message, setMessage] = useState("");
@@ -54,23 +53,15 @@ function TeamsPage() {
 
     try {
       setCreating(true);
-      const ids =
-        memberIds.trim().length > 0
-          ? memberIds
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : [];
 
       const res = await axios.post(
         `${API_URL}/teams`,
-        { name: teamName.trim(), memberIds: ids },
+        { name: teamName.trim() },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setMessage("Team created successfully.");
       setTeamName("");
-      setMemberIds("");
       setMyTeams((prev) => [...prev, res.data]);
     } catch (err) {
       console.error("Create team error:", err);
@@ -162,18 +153,6 @@ function TeamsPage() {
                   onChange={(e) => setTeamName(e.target.value)}
                   className="input-control"
                   placeholder="e.g. Bit Busters"
-                />
-              </div>
-              <div className="auth-field">
-                <label className="auth-label">
-                  Member IDs (optional, comma separated)
-                </label>
-                <textarea
-                  value={memberIds}
-                  onChange={(e) => setMemberIds(e.target.value)}
-                  className="input-control"
-                  placeholder="UserId1, UserId2, ..."
-                  rows={3}
                 />
               </div>
               <button

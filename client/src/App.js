@@ -1,3 +1,4 @@
+// App.js
 import React from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 
@@ -23,6 +24,9 @@ import TeamBattleRoomPage from "./pages/TeamBattleRoomPage";
 
 import { useAuth } from "./context/AuthContext";
 import LeaderboardPage from "./pages/LeaderboardPage";
+
+// 👉 add this
+import About from "./pages/About";
 
 function App() {
   const { user, logout } = useAuth();
@@ -56,6 +60,11 @@ function App() {
           <div className="navbar-right">
             {!isSimpleEditor && (
               <>
+                {/* 👉 new About link in main navbar */}
+                <Link to="/about" className={navLinkClass("/about")}>
+                  About
+                </Link>
+
                 <Link to="/problems" className={navLinkClass("/problems")}>
                   Problems
                 </Link>
@@ -119,6 +128,9 @@ function App() {
         {/* Landing */}
         <Route path="/" element={<LandingPage />} />
 
+        {/* 👉 About page route */}
+        <Route path="/about" element={<About />} />
+
         {/* Problems */}
         <Route path="/problems" element={<Home />} />
         <Route path="/problems/:slug" element={<ProblemPage />} />
@@ -150,7 +162,10 @@ function App() {
         {/* Teams & Team Battle */}
         <Route path="/teams" element={<TeamsPage />} />
         <Route path="/team-battle" element={<TeamBattlePage />} />
-        <Route path="/team-battles/:battleId" element={<TeamBattleRoomPage />} />
+        <Route
+          path="/team-battles/:battleId"
+          element={<TeamBattleRoomPage />}
+        />
 
         {/* Leaderboard */}
         <Route path="/leaderboard" element={<LeaderboardPage />} />

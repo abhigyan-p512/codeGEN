@@ -48,8 +48,7 @@ export default function LeaderboardPage() {
           <div>
             <h1 className="page-heading">🏆 Global Leaderboard</h1>
             <p className="page-subtitle">
-              See who&apos;s crushing problems, duels, team battles, and contests on
-              CodeGen4Future.
+              See who's crushing problems, duels, and team battles on CodeGen4Future.
             </p>
           </div>
         </div>
@@ -71,7 +70,6 @@ export default function LeaderboardPage() {
                   <th>Accuracy</th>
                   <th>Duels</th>
                   <th>Team Battles</th>
-                  <th>Contests</th>
                 </tr>
               </thead>
               <tbody>
@@ -82,8 +80,6 @@ export default function LeaderboardPage() {
                   const hard = u.solvedHard || 0;
                   const wins = u.duelWins || 0;
                   const losses = u.duelLosses || 0;
-                  const contestsPlayed = u.contestsPlayed || 0;
-                  const contestsWon = u.contestsWon || 0;
                   const accepted = u.acceptedSubmissions || 0;
 
                   const teamPlayed = u.teamBattlesPlayed || 0;
@@ -144,11 +140,6 @@ export default function LeaderboardPage() {
                           <span className="chip-small">
                             ({teamPlayed} played)
                           </span>
-                        </span>
-                      </td>
-                      <td>
-                        <span className="chip chip-neutral">
-                          {contestsWon}/{contestsPlayed} won
                         </span>
                       </td>
                     </tr>

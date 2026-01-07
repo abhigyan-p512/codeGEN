@@ -3,6 +3,7 @@ const axios = require("axios");
 const Submission = require("./models/Submission");
 const Problem = require("./models/Problem");
 const User = require("./models/User"); // <-- to update duelWins / duelLosses
+const DuelChatMessage = require("./models/DuelChatMessage");
 
 const JUDGE0_URL =
   process.env.JUDGE0_URL || "https://ce.judge0.com";
@@ -192,7 +193,7 @@ module.exports = function initSocket(io) {
     });
 
     // ---------- JOIN ROOM (DUEL) ----------
-    socket.on("join_duel", ({ duelId, roomId, userId } = {}) => {
+    socket.on("join_duel", async ({ duelId, roomId, userId } = {}) => {
       const id = duelId || roomId;
       if (!id) {
         console.log("join_duel missing id", { duelId, roomId, userId });
@@ -235,6 +236,27 @@ module.exports = function initSocket(io) {
         players: playersArr,
         started: !!duel.startedAt,
       });
+
+      // Send recent duel chat history to the joining socket
+      try {
+        const recent = await DuelChatMessage.find({ duelId: id })
+          .sort({ createdAt: 1 })
+          .limit(200)
+          .populate("user", "username")
+          .lean();
+
+        const messages = recent.map((m) => ({
+          id: m._id,
+          userId: m.user?._id || null,
+          username: m.username || (m.user && m.user.username) || null,
+          message: m.message,
+          createdAt: m.createdAt,
+        }));
+
+        socket.emit("duel_chat_history", messages);
+      } catch (err) {
+        console.error("duel chat history error", err);
+      }
     });
 
     // ---------- START DUEL ----------
@@ -479,6 +501,60 @@ module.exports = function initSocket(io) {
         });
       } catch (err) {
         console.error("duel_submit_code error", err);
+        ack({ ok: false, message: err.message || "server error" });
+      }
+    });
+
+    // ---------- DUEL CHAT MESSAGE ----------
+    socket.on("duel_chat_message", async (payload = {}, ack = () => {}) => {
+      try {
+        const { duelId, roomId, userId, message } = payload || {};
+        const id = duelId || roomId || socketToPlayer.get(socket.id)?.duelId;
+        if (!id || !message || !message.trim()) {
+          ack({ ok: false, message: "missing duelId or message" });
+          return;
+        }
+
+        // optional: resolve user and username
+        let username = null;
+        let userRef = null;
+        if (userId) {
+          userRef = userId;
+          try {
+            const u = await User.findById(userId).select("username").lean();
+            if (u) username = u.username;
+          } catch (e) {
+            // ignore
+          }
+        } else if (socketToPlayer.get(socket.id)?.userId) {
+          userRef = socketToPlayer.get(socket.id).userId;
+          try {
+            const u = await User.findById(userRef).select("username").lean();
+            if (u) username = u.username;
+          } catch (e) {}
+        }
+
+        const doc = await DuelChatMessage.create({
+          duelId: id.toString(),
+          user: userRef || null,
+          username: username || null,
+          message: String(message).slice(0, 2000),
+        });
+
+        const out = {
+          id: doc._id,
+          duelId: doc.duelId,
+          userId: doc.user,
+          username: doc.username,
+          message: doc.message,
+          createdAt: doc.createdAt,
+        };
+
+        // broadcast to room
+        io.to(id).emit("duel_chat_message", out);
+        ack({ ok: true, message: "sent" });
+      } catch (err) {
+        console.error("duel_chat_message error", err);
         ack({ ok: false, message: err.message || "server error" });
       }
     });

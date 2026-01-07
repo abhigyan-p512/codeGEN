@@ -1,5 +1,5 @@
 // client/src/pages/DuelRoomPage.js
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import MonacoCodeRunner from "../components/MonacoCodeRunner";
 import { useAuth } from "../context/AuthContext";
@@ -39,13 +39,27 @@ const styles = {
     fontSize: "13px",
     opacity: 0.8,
   },
+  timer: {
+    fontSize: "16px",
+    fontWeight: 600,
+    fontFamily: "monospace",
+    color: "#818cf8",
+    background: "rgba(129, 140, 248, 0.1)",
+    border: "1px solid rgba(129, 140, 248, 0.3)",
+    borderRadius: "8px",
+    padding: "6px 12px",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    marginTop: "4px",
+  },
   substatus: {
     fontSize: "13px",
     opacity: 0.75,
   },
   main: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1.3fr)",
+    gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(320px, 0.9fr)",
     gap: "18px",
     alignItems: "stretch",
   },
@@ -220,9 +234,18 @@ export default function DuelRoomPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [copyLabel, setCopyLabel] = useState("Copy duel code");
+  const [duelStartTime, setDuelStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   const [players, setPlayers] = useState([]);
   const [isHost, setIsHost] = useState(false);
+
+  // Chat state
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatVisible, setChatVisible] = useState(true);
+  const chatMessagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
 
   // NEW: winner/loser/draw + summary
   const [duelOutcome, setDuelOutcome] = useState(null); // "win" | "lose" | "draw" | null
@@ -240,6 +263,11 @@ export default function DuelRoomPage() {
       if (payload?.problem) setProblem(payload.problem);
       setStatus("Duel in progress");
       setHasStarted(true);
+      
+      // Set the start time for the timer (use server timestamp if available, otherwise use current time)
+      const startTime = payload?.startedAt || Date.now();
+      setDuelStartTime(startTime);
+      setElapsedTime(0);
 
       // reset outcome when a new duel starts
       setDuelOutcome(null);
@@ -279,6 +307,8 @@ export default function DuelRoomPage() {
       setDuelOutcome(outcome);
       setDuelSummary(summary || null);
       setHasStarted(false);
+      // Stop the timer
+      setDuelStartTime(null);
     };
 
     const handleRoomUpdate = ({ players = [], started } = {}) => {
@@ -292,11 +322,21 @@ export default function DuelRoomPage() {
       setIsHost(!!isHost);
     };
 
+    const handleChatHistory = (msgs = []) => {
+      setChatMessages(Array.isArray(msgs) ? msgs : []);
+    };
+
+    const handleChatMessage = (msg) => {
+      setChatMessages((prev) => [...prev, msg]);
+    };
+
     s.on("duel_started", handleDuelStarted);
     s.on("duel_error", handleDuelError);
     s.on("duel_finished", handleDuelFinished);
     s.on("room_update", handleRoomUpdate);
     s.on("duel_role", handleRole);
+    s.on("duel_chat_history", handleChatHistory);
+    s.on("duel_chat_message", handleChatMessage);
 
     s.on("connect", () => {
       const userId = user?._id || user?.id || null;
@@ -313,9 +353,61 @@ export default function DuelRoomPage() {
       s.off("duel_finished", handleDuelFinished);
       s.off("room_update", handleRoomUpdate);
       s.off("duel_role", handleRole);
+      s.off("duel_chat_history", handleChatHistory);
+      s.off("duel_chat_message", handleChatMessage);
       s.disconnect();
     };
   }, [roomId, user]);
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages]);
+
+  // Timer effect - updates elapsed time every second
+  useEffect(() => {
+    if (!duelStartTime || !hasStarted) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - duelStartTime) / 1000);
+      setElapsedTime(elapsed);
+    }, 1000);
+
+    // Initial update
+    const now = Date.now();
+    const elapsed = Math.floor((now - duelStartTime) / 1000);
+    setElapsedTime(elapsed);
+
+    return () => clearInterval(interval);
+  }, [duelStartTime, hasStarted]);
+
+  // Format time as MM:SS
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  // Chat send
+  const sendChat = async () => {
+    if (!socket) return;
+    const msg = (chatInput || "").trim();
+    if (!msg) return;
+    const userId = user?._id || user?.id || null;
+    socket.emit(
+      "duel_chat_message",
+      { roomId, userId, message: msg },
+      (res = {}) => {
+        if (res.ok) setChatInput("");
+        else alert(res.message || "Failed to send message");
+      }
+    );
+  };
 
   // -------------------- ACTIONS --------------------
   const handleRun = useCallback(
@@ -489,6 +581,13 @@ export default function DuelRoomPage() {
         <div style={styles.titleBlock}>
           <h1 style={styles.title}>1v1 Duel Room</h1>
           <div style={styles.status}>{status}</div>
+          
+          {hasStarted && duelStartTime && (
+            <div style={styles.timer}>
+              <span>⏱️</span>
+              <span>{formatTime(elapsedTime)}</span>
+            </div>
+          )}
 
           {duelOutcome && (
             <div
@@ -555,7 +654,12 @@ export default function DuelRoomPage() {
         {problem ? "Problem loaded" : "Waiting for problem..."}
       </div>
 
-      <div style={styles.main}>
+      <div 
+        style={{
+          ...styles.main,
+          gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1.3fr)",
+        }}
+      >
         <section style={styles.problemPanel}>
           {problem ? (
             <>
@@ -624,6 +728,335 @@ export default function DuelRoomPage() {
           </div>
         </section>
       </div>
+
+      {/* Chat panel - Floating overlay */}
+      {chatVisible && (
+        <section
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            border: "1px solid rgba(129, 140, 248, 0.2)",
+            borderRadius: 14,
+            padding: 0,
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(129, 140, 248, 0.3)",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            width: window.innerWidth < 768 ? "320px" : "380px",
+            height: window.innerWidth < 768 ? "320px" : "380px",
+            minHeight: window.innerWidth < 768 ? "320px" : "380px",
+            maxHeight: window.innerWidth < 768 ? "320px" : "380px",
+            zIndex: 1000,
+            transition: "transform 0.3s ease, opacity 0.3s ease",
+          }}
+        >
+        {/* Chat Header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "16px 20px",
+            background: "rgba(129, 140, 248, 0.1)",
+            borderBottom: "1px solid rgba(129, 140, 248, 0.2)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#10b981",
+                boxShadow: "0 0 8px rgba(16, 185, 129, 0.6)",
+                animation: "pulse 2s infinite",
+              }}
+            />
+            <div style={{ fontWeight: 700, fontSize: 16, color: "#e5e7eb" }}>Room Chat</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                fontSize: 12,
+                opacity: 0.7,
+                color: "#9ca3af",
+                background: "rgba(0, 0, 0, 0.2)",
+                padding: "4px 10px",
+                borderRadius: 12,
+              }}
+            >
+              {chatMessages.length} {chatMessages.length === 1 ? "message" : "messages"}
+            </div>
+            <button
+              onClick={() => setChatVisible(false)}
+              style={{
+                background: "rgba(239, 68, 68, 0.2)",
+                border: "1px solid rgba(239, 68, 68, 0.4)",
+                borderRadius: 8,
+                padding: "6px 10px",
+                cursor: "pointer",
+                color: "#fecaca",
+                fontSize: 12,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.2s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(239, 68, 68, 0.3)";
+                e.currentTarget.style.transform = "scale(1.05)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+              title="Hide chat"
+            >
+              <span>−</span>
+              <span>Hide</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Messages Container */}
+        <div
+          ref={chatContainerRef}
+          className="chatMessages"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            padding: "16px",
+            background: "rgba(15, 23, 42, 0.5)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          {chatMessages.length === 0 ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                color: "#6b7280",
+                fontSize: 14,
+                fontStyle: "italic",
+              }}
+            >
+              No messages yet. Start the conversation!
+            </div>
+          ) : (
+            chatMessages.map((m, idx) => {
+              const myId = user?._id || user?.id || null;
+              const isMyMessage = myId && m.userId && String(m.userId) === String(myId);
+              const timestamp = m.createdAt
+                ? new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "";
+
+              return (
+                <div
+                  key={m.id || idx}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    alignSelf: isMyMessage ? "flex-end" : "flex-start",
+                    maxWidth: "75%",
+                    animation: "fadeIn 0.3s ease-in",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: isMyMessage ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                      background: isMyMessage
+                        ? "linear-gradient(135deg, rgba(129, 140, 248, 0.3) 0%, rgba(236, 72, 153, 0.3) 100%)"
+                        : "rgba(31, 41, 55, 0.8)",
+                      border: isMyMessage
+                        ? "1px solid rgba(129, 140, 248, 0.4)"
+                        : "1px solid rgba(75, 85, 99, 0.3)",
+                      boxShadow: isMyMessage
+                        ? "0 2px 8px rgba(129, 140, 248, 0.2)"
+                        : "0 2px 4px rgba(0, 0, 0, 0.2)",
+                      wordWrap: "break-word",
+                      transition: "transform 0.1s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "scale(1.02)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
+                  >
+                    {!isMyMessage && (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#818cf8",
+                          marginBottom: 6,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <span>{m.username || (m.userId ? String(m.userId).slice(0, 8) + "..." : "Anonymous")}</span>
+                        {timestamp && (
+                          <span style={{ fontSize: 10, opacity: 0.6, color: "#9ca3af", fontWeight: 400 }}>
+                            {timestamp}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        fontSize: 14,
+                        lineHeight: 1.5,
+                        color: "#e5e7eb",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {m.message}
+                    </div>
+                    {isMyMessage && timestamp && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          opacity: 0.6,
+                          color: "#9ca3af",
+                          marginTop: 4,
+                          textAlign: "right",
+                        }}
+                      >
+                        {timestamp}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={chatMessagesEndRef} />
+        </div>
+
+        {/* Input Container */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            padding: "16px 20px",
+            background: "rgba(15, 23, 42, 0.6)",
+            borderTop: "1px solid rgba(129, 140, 248, 0.1)",
+          }}
+        >
+          <input
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="Type a message..."
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "1px solid rgba(129, 140, 248, 0.3)",
+              background: "rgba(15, 23, 42, 0.8)",
+              color: "#e5e7eb",
+              fontSize: 14,
+              outline: "none",
+              transition: "all 0.2s ease",
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendChat();
+              }
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "rgba(129, 140, 248, 0.6)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(129, 140, 248, 0.1)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = "rgba(129, 140, 248, 0.3)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          />
+          <button
+            onClick={sendChat}
+            disabled={!chatInput.trim()}
+            style={{
+              padding: "12px 24px",
+              borderRadius: 12,
+              background: chatInput.trim()
+                ? "linear-gradient(135deg, rgba(129, 140, 248, 1) 0%, rgba(236, 72, 153, 1) 100%)"
+                : "rgba(75, 85, 99, 0.5)",
+              color: "#ffffff",
+              fontWeight: 600,
+              fontSize: 14,
+              border: "none",
+              cursor: chatInput.trim() ? "pointer" : "not-allowed",
+              transition: "all 0.2s ease",
+              boxShadow: chatInput.trim() ? "0 2px 8px rgba(129, 140, 248, 0.3)" : "none",
+            }}
+            onMouseEnter={(e) => {
+              if (chatInput.trim()) {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(129, 140, 248, 0.4)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (chatInput.trim()) {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 2px 8px rgba(129, 140, 248, 0.3)";
+              }
+            }}
+          >
+            Send
+          </button>
+        </div>
+        </section>
+      )}
+
+      {/* Floating button to show chat when hidden */}
+        {!chatVisible && (
+          <button
+            onClick={() => setChatVisible(true)}
+            style={{
+              position: "fixed",
+              bottom: 24,
+              right: 24,
+              background: "linear-gradient(135deg, rgba(129, 140, 248, 1) 0%, rgba(236, 72, 153, 1) 100%)",
+              border: "none",
+              borderRadius: "50%",
+              width: 56,
+              height: 56,
+              cursor: "pointer",
+              color: "#ffffff",
+              fontSize: 20,
+              fontWeight: 700,
+              boxShadow: "0 4px 12px rgba(129, 140, 248, 0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.3s ease",
+              zIndex: 1000,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "scale(1.1)";
+              e.currentTarget.style.boxShadow = "0 6px 16px rgba(129, 140, 248, 0.6)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(129, 140, 248, 0.4)";
+            }}
+            title="Show chat"
+          >
+            💬
+          </button>
+        )}
     </div>
   );
 }

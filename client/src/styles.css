@@ -1799,6 +1799,54 @@ body {
     margin-right: 0.5rem;
 }
 
+/* Chat Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+/* Duel Room Responsive Styles */
+/* Duel Room Grid - Always 2 columns (chat is floating overlay) */
+.duel-main-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) !important;
+    gap: 18px !important;
+    align-items: stretch !important;
+}
+
+@media (max-width: 1200px) {
+    /* Stack panels on smaller screens */
+    .duel-main-grid {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto auto !important;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Single column on mobile */
+    .duel-main-grid {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto auto !important;
+    }
+}
+
 /* Fixed Button Styles */
 .btn {
     padding: 0.75rem 1.5rem;
