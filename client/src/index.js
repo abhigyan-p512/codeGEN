@@ -5,8 +5,8 @@ import App from "./App";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 
-// Added: restore auth token header from localStorage on load
-const token = localStorage.getItem("token");
+// Added: restore auth token header from sessionStorage on load
+const token = sessionStorage.getItem("token");
 if (token) axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
 const root = ReactDOM.createRoot(document.getElementById("root"));

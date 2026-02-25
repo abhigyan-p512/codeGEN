@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './SimpleCodeEditor.css';
+import api from '../utils/api';
 
 const SimpleCodeEditor = () => {
   const [code, setCode] = useState(`// Welcome to CodeGen4Future!
@@ -22,8 +23,8 @@ helloWorld();`);
     { value: 'python', label: 'Python' },
     { value: 'java', label: 'Java' },
     { value: 'cpp', label: 'C++' },
-    { value: 'html', label: 'HTML' },
-    { value: 'css', label: 'CSS', icon: '🎨' }
+    
+    
   ];
 
   const handleCodeChange = (e) => {
@@ -144,6 +145,10 @@ p {
         // For JavaScript, we'll use a safe evaluation
         const result = await executeJavaScript(code);
         setOutput(result);
+      } else if (language === 'python' || language === 'java' || language === 'cpp') {
+        // For Python, Java, and C++, use the backend API
+        const result = await executeCodeViaAPI(code, language);
+        setOutput(result);
       } else if (language === 'html') {
         // For HTML, show preview
         setOutput('HTML Preview:\n' + code);
@@ -184,6 +189,34 @@ p {
         resolve(`Error: ${error.message}`);
       }
     });
+  };
+
+  const executeCodeViaAPI = async (codeToRun, lang) => {
+    try {
+      const response = await api.post('/judge/run', {
+        code: codeToRun,
+        language: lang,
+        input: '' // You can add input support later if needed
+      });
+      
+      if (response.data.error) {
+        return `Error: ${response.data.error}`;
+      }
+      
+      return response.data.output || 'Code executed successfully!';
+    } catch (error) {
+      // Handle network errors or API errors
+      if (error.response) {
+        // Server responded with error status
+        return `Error: ${error.response.data?.error || error.response.statusText || 'Unknown error'}`;
+      } else if (error.request) {
+        // Request was made but no response received
+        return 'Error: Could not connect to the server. Please make sure the backend is running.';
+      } else {
+        // Something else happened
+        return `Error: ${error.message}`;
+      }
+    }
   };
 
   const clearCode = () => {

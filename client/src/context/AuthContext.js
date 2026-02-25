@@ -6,7 +6,7 @@ import api from "../utils/api";
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const storedToken = localStorage.getItem("token");
+  const storedToken = sessionStorage.getItem("token");
   const [token, setToken] = useState(storedToken);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,26 +34,14 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
-  // Sync changes across browser tabs (fix for multi-tab same profile issue)
-  useEffect(() => {
-    const handleStorageChange = (event) => {
-      if (event.key === "token") {
-        setToken(event.newValue); // triggers user refetch
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
-
   const login = (newToken, userData) => {
-    localStorage.setItem("token", newToken);
+    sessionStorage.setItem("token", newToken);
     setToken(newToken);
     setUser(userData);
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
     setToken(null);
     setUser(null);
   };

@@ -16,6 +16,12 @@ module.exports = function initSocket(io) {
   // socket.id -> { duelId, userId }
   const socketToPlayer = new Map();
 
+  // ---------- COLLABORATIVE EDITOR STATE ----------
+  // roomId -> { code: string, clients: Map<socketId, { username }> }
+  const collabRooms = new Map();
+  // socket.id -> roomId
+  const collabSocketToRoom = new Map();
+
   const DEFAULT_SUBMIT_TIMEOUT_MS = 30_000;
   const DEFAULT_DUEL_TTL_MS = 5 * 60_000;
   const MIN_SUBMIT_INTERVAL_MS = 3_000;
@@ -559,10 +565,140 @@ module.exports = function initSocket(io) {
       }
     });
 
+    // ---------- COLLABORATIVE EDITOR EVENTS ----------
+
+    // Join a collaborative editor room
+    socket.on(
+      "collab_join",
+      ({ roomId, username } = {}, ack = () => {}) => {
+        try {
+          if (!roomId) {
+            ack({ ok: false, message: "roomId is required" });
+            return;
+          }
+
+          const id = String(roomId);
+          let room = collabRooms.get(id);
+          if (!room) {
+            room = {
+              code: "",
+              clients: new Map(),
+            };
+            collabRooms.set(id, room);
+          }
+
+          const safeUsername =
+            (username && String(username).slice(0, 64)) || "Guest";
+
+          room.clients.set(socket.id, { username: safeUsername });
+          collabSocketToRoom.set(socket.id, id);
+          socket.join(id);
+
+          const clients = Array.from(room.clients.entries()).map(
+            ([sid, info]) => ({
+              socketId: sid,
+              username: info.username,
+            })
+          );
+
+          io.to(id).emit("collab_clients", { clients });
+
+          // Send current code only to the joining client
+          socket.emit("collab_sync_code", { code: room.code || "" });
+
+          ack({ ok: true });
+        } catch (err) {
+          console.error("collab_join error", err);
+          ack({ ok: false, message: err.message || "server error" });
+        }
+      }
+    );
+
+    // Broadcast code changes to everyone else in the room
+    socket.on("collab_code_change", ({ roomId, code } = {}) => {
+      const id = roomId || collabSocketToRoom.get(socket.id);
+      if (!id) return;
+
+      const room = collabRooms.get(String(id));
+      if (!room) return;
+
+      if (typeof code === "string") {
+        room.code = code;
+      }
+
+      // send to all other sockets in the room
+      socket.to(String(id)).emit("collab_code_change", {
+        code: room.code,
+      });
+    });
+
+    // Simple in-memory chat for collaborative editor rooms
+    socket.on(
+      "collab_chat_message",
+      ({ roomId, username, message } = {}, ack = () => {}) => {
+        try {
+          const id = roomId || collabSocketToRoom.get(socket.id);
+          if (!id) {
+            ack({ ok: false, message: "roomId is required" });
+            return;
+          }
+
+          const text = message && String(message).trim();
+          if (!text) {
+            ack({ ok: false, message: "message is required" });
+            return;
+          }
+
+          const room = collabRooms.get(String(id));
+          const fallbackUsername =
+            room?.clients.get(socket.id)?.username || "Guest";
+
+          const safeUsername =
+            (username && String(username).slice(0, 64)) || fallbackUsername;
+
+          const out = {
+            id:
+              Date.now().toString(36) + Math.random().toString(36).slice(2),
+            roomId: String(id),
+            username: safeUsername,
+            message: text.slice(0, 2000),
+            createdAt: new Date().toISOString(),
+          };
+
+          io.to(String(id)).emit("collab_chat_message", out);
+          ack({ ok: true });
+        } catch (err) {
+          console.error("collab_chat_message error", err);
+          ack({ ok: false, message: err.message || "server error" });
+        }
+      }
+    );
+
     // ---------- DISCONNECT ----------
     socket.on("disconnect", () => {
       console.log("socket disconnected", socket.id);
       lastSubmitAt.delete(socket.id);
+
+       // Clean up collaborative editor membership
+       const collabRoomId = collabSocketToRoom.get(socket.id);
+       if (collabRoomId) {
+         collabSocketToRoom.delete(socket.id);
+         const room = collabRooms.get(collabRoomId);
+         if (room) {
+           room.clients.delete(socket.id);
+           if (room.clients.size === 0) {
+             collabRooms.delete(collabRoomId);
+           } else {
+             const clients = Array.from(room.clients.entries()).map(
+               ([sid, info]) => ({
+                 socketId: sid,
+                 username: info.username,
+               })
+             );
+             io.to(collabRoomId).emit("collab_clients", { clients });
+           }
+         }
+       }
 
       const info = socketToPlayer.get(socket.id);
       socketToPlayer.delete(socket.id);

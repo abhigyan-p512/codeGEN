@@ -121,7 +121,8 @@ const LandingPage = () => {
             }}
           >
             <Link to="/problems" className="btn btn-primary">Problems</Link>
-            <Link to="/simple-editor" className="btn btn-primary">Start Coding</Link>
+            <Link to="/simple-editor" className="btn btn-primary">Solo Editor</Link>
+            <Link to="/collab-editor" className="btn btn-primary">Collaborative Room</Link>
             <Link to="/contests" className="btn btn-primary">Contests</Link>
             <Link to="/duel" className="btn btn-primary">1 vs 1 Duel</Link>
             <Link to="/teams" className="btn btn-primary">Team Battles</Link>

@@ -11,6 +11,9 @@ import Profile from "./pages/Profile";
 import LandingPage from "./LandingPage";
 import SimpleCodeEditor from "./components/SimpleCodeEditor";
 
+import EditorPage from "./pages/EditorPage";
+import CollabEditorLobby from "./pages/CollabEditorLobby";
+
 import ContestsList from "./pages/ContestsList";
 import ContestPage from "./pages/ContestPage";
 import CreateContestPage from "./pages/CreateContestPage";
@@ -141,6 +144,11 @@ function App() {
 
         {/* Simple editor */}
         <Route path="/simple-editor" element={<SimpleCodeEditor />} />
+
+        {/* Collaborative editor lobby + rooms */}
+        <Route path="/collab-editor" element={<CollabEditorLobby />} />
+        {/* Collaborative editor (room-based) */}
+        <Route path="/collab-editor/:roomId" element={<EditorPage />} />
 
         {/* Auth */}
         <Route path="/login" element={<Login />} />

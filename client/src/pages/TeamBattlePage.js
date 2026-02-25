@@ -61,7 +61,15 @@ function TeamBattlePage() {
       try {
         setLoadingProblems(true);
         const res = await axios.get(`${API_URL}/problems`);
-        setProblems(res.data || []);
+        const problemsList = res.data || [];
+        setProblems(problemsList);
+        
+        // Automatically select 3 random problems
+        if (problemsList.length > 0) {
+          const shuffled = [...problemsList].sort(() => Math.random() - 0.5);
+          const randomProblems = shuffled.slice(0, Math.min(3, problemsList.length));
+          setSelectedProblemIds(randomProblems.map(p => p._id));
+        }
       } catch (err) {
         console.error("Fetch problems error:", err);
         setMessage("Failed to load problems.");
@@ -133,7 +141,7 @@ function TeamBattlePage() {
           <div>
             <h1 className="page-heading">Team Battle</h1>
             <p className="page-subtitle">
-              Pick two teams, choose problems and start a team vs team war.
+              Pick two teams and start a team vs team war. 3 random problems will be automatically selected.
             </p>
           </div>
         </div>
@@ -202,31 +210,6 @@ function TeamBattlePage() {
                 min={1}
               />
             </div>
-          </div>
-
-          <div className="problems-select-column">
-            <label className="auth-label">Select Problems</label>
-            {loadingProblems ? (
-              <p className="page-muted">Loading problems...</p>
-            ) : problems.length === 0 ? (
-              <p className="page-muted">No problems available.</p>
-            ) : (
-              <div className="battle-problems-list">
-                {problems.map((p) => (
-                  <label key={p._id} className="battle-problem-item">
-                    <input
-                      type="checkbox"
-                      checked={selectedProblemIds.includes(p._id)}
-                      onChange={() => toggleProblemSelection(p._id)}
-                    />
-                    <span>
-                      {p.title}{" "}
-                      <span className="chip chip-small">{p.difficulty}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
           </div>
 
           <button

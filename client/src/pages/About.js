@@ -596,24 +596,6 @@ const About = () => {
                   </div>
                   <div className="developer-usn">USN: 1CR22IS003</div>
                 </div>
-                <div className="developer-card">
-                  <div className="developer-avatar">AS</div>
-                  <div className="developer-name">Abhinav Singh</div>
-                  <div className="developer-role">Developer</div>
-                  <div className="developer-description">
-                    Information science engineering student at CMR Institute of Technology, Bangalore.
-                  </div>
-                  <div className="developer-usn">USN: 1CR22IS005</div>
-                </div>
-                <div className="developer-card">
-                  <div className="developer-avatar">BS</div>
-                  <div className="developer-name">Bhuvana S</div>
-                  <div className="developer-role">Developer</div>
-                  <div className="developer-description">
-                    Information science engineering student at CMR Institute of Technology, Bangalore.
-                  </div>
-                  <div className="developer-usn">USN: 1CR22IS034</div>
-                </div>
               </div>
               
             </div>

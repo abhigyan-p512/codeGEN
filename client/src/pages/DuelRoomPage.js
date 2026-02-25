@@ -53,6 +53,18 @@ const styles = {
     gap: "6px",
     marginTop: "4px",
   },
+  timerWarning: {
+    color: "#f87171",
+    background: "rgba(248, 113, 113, 0.1)",
+    border: "1px solid rgba(248, 113, 113, 0.3)",
+    animation: "pulse 1s infinite",
+  },
+  timerCritical: {
+    color: "#ef4444",
+    background: "rgba(239, 68, 68, 0.15)",
+    border: "1px solid rgba(239, 68, 68, 0.5)",
+    animation: "pulse 0.5s infinite",
+  },
   substatus: {
     fontSize: "13px",
     opacity: 0.75,
@@ -235,7 +247,7 @@ export default function DuelRoomPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [copyLabel, setCopyLabel] = useState("Copy duel code");
   const [duelStartTime, setDuelStartTime] = useState(null);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const [remainingTime, setRemainingTime] = useState(900); // 15 minutes in seconds
 
   const [players, setPlayers] = useState([]);
   const [isHost, setIsHost] = useState(false);
@@ -267,7 +279,7 @@ export default function DuelRoomPage() {
       // Set the start time for the timer (use server timestamp if available, otherwise use current time)
       const startTime = payload?.startedAt || Date.now();
       setDuelStartTime(startTime);
-      setElapsedTime(0);
+      setRemainingTime(900); // Reset to 15 minutes (900 seconds)
 
       // reset outcome when a new duel starts
       setDuelOutcome(null);
@@ -366,22 +378,32 @@ export default function DuelRoomPage() {
     }
   }, [chatMessages]);
 
-  // Timer effect - updates elapsed time every second
+  // Timer effect - updates remaining time countdown every second
   useEffect(() => {
     if (!duelStartTime || !hasStarted) {
       return;
     }
 
+    const DUEL_DURATION = 900; // 15 minutes in seconds
+
     const interval = setInterval(() => {
       const now = Date.now();
       const elapsed = Math.floor((now - duelStartTime) / 1000);
-      setElapsedTime(elapsed);
+      const remaining = Math.max(0, DUEL_DURATION - elapsed);
+      setRemainingTime(remaining);
+
+      // If time runs out, the server should handle ending the duel
+      // But we can show 00:00 here
+      if (remaining === 0) {
+        clearInterval(interval);
+      }
     }, 1000);
 
     // Initial update
     const now = Date.now();
     const elapsed = Math.floor((now - duelStartTime) / 1000);
-    setElapsedTime(elapsed);
+    const remaining = Math.max(0, DUEL_DURATION - elapsed);
+    setRemainingTime(remaining);
 
     return () => clearInterval(interval);
   }, [duelStartTime, hasStarted]);
@@ -583,9 +605,18 @@ export default function DuelRoomPage() {
           <div style={styles.status}>{status}</div>
           
           {hasStarted && duelStartTime && (
-            <div style={styles.timer}>
+            <div
+              style={{
+                ...styles.timer,
+                ...(remainingTime <= 60
+                  ? styles.timerCritical
+                  : remainingTime <= 120
+                  ? styles.timerWarning
+                  : {}),
+              }}
+            >
               <span>⏱️</span>
-              <span>{formatTime(elapsedTime)}</span>
+              <span>{formatTime(remainingTime)}</span>
             </div>
           )}
 
